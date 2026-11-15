@@ -1,0 +1,51 @@
+<%- include('partials/head',{map:true}) %>
+<% const ini=((user.first_name||'')[0]||'')+((user.last_name||'')[0]||''); const full=(user.first_name+' '+user.last_name).trim(); %>
+<section class="acc">
+<div class="acc-hero"><span class="nb nb1"></span><span class="nb nb2"></span>
+<div class="acc-av"><%= ini||'؟' %></div>
+<div class="acc-id"><h1><%= full||'کاربر VELORA' %></h1><span dir="ltr"><%- ic('mobile') %> <%= user.phone %></span></div>
+<div class="acc-st"><a href="/account/orders"><b><%= fa(ocount) %></b><small>سفارش</small></a><div><b><%= fa(addrs.length) %></b><small>آدرس</small></div></div>
+<div class="acc-act"><a class="btn sm o" href="/account/orders"><%- ic('box') %> سفارش‌های من</a><form method="post" action="/logout?_csrf=<%= csrf %>"><button class="btn sm o"><%- ic('logout') %> خروج</button></form></div></div>
+
+<div class="acc-grid">
+<form class="card2 acc-prof" method="post" action="/account?_csrf=<%= csrf %>"><h3><%- ic('user') %> اطلاعات شخصی</h3>
+<div class="fld"><label>شماره موبایل</label><div class="fi"><%- ic('mobile') %><input value="<%= user.phone %>" disabled dir="ltr"></div></div>
+<div class="row2"><div class="fld"><label>نام</label><div class="fi"><%- ic('user') %><input name="first_name" value="<%= user.first_name %>" placeholder="نام"></div></div>
+<div class="fld"><label>نام خانوادگی</label><div class="fi"><%- ic('user') %><input name="last_name" value="<%= user.last_name %>" placeholder="نام خانوادگی"></div></div></div>
+<div class="fld"><label>ایمیل</label><div class="fi"><%- ic('mail') %><input type="email" name="email" value="<%= user.email %>" placeholder="example@mail.com" dir="ltr"></div></div>
+<button class="btn" style="width:100%;margin-top:18px"><%- ic('check') %> ذخیره اطلاعات</button></form>
+
+<div class="card2 acc-addr" id="addr"><h3><%- ic('pin') %> آدرس‌های من <button type="button" class="btn sm" id="addnew" style="margin-inline-start:auto"><%- ic('plus') %> آدرس جدید</button></h3>
+<div class="alist"><% if(!addrs.length){ %><div class="empty-a"><%- ic('pin') %><p>هنوز آدرسی ثبت نکرده‌اید.</p></div><% } %>
+<% addrs.forEach((a,i)=>{ %><div class="ad <%= a.is_default?'def':'' %>" style="--n:<%= i %>"><div class="ad-h"><span class="ad-t"><%- ic(/محل کار|شرکت|اداره/.test(a.title)?'box':'pin') %> <%= a.title %></span><% if(a.is_default){ %><span class="pill ok">پیش‌فرض</span><% } %></div>
+<p><%= a.province?a.province+'، '+a.city+'، ':'' %><%= a.address %></p><small class="ad-m"><% if(a.receiver){ %><%- ic('user') %> <%= a.receiver %> · <span dir="ltr"><%= a.receiver_phone %></span><% } %><% if(a.postal_code){ %> · کد پستی <span dir="ltr"><%= a.postal_code %></span><% } %></small><div class="ad-b">
+<button type="button" class="btn sm o ed" data-id="<%= a.id %>" data-title="<%= a.title %>" data-address="<%= a.address %>" data-receiver="<%= a.receiver %>" data-receiver_phone="<%= a.receiver_phone %>" data-province="<%= a.province %>" data-city="<%= a.city %>" data-postal_code="<%= a.postal_code %>" data-lat="<%= a.lat||'' %>" data-lng="<%= a.lng||'' %>">ویرایش</button>
+<% if(!a.is_default){ %><form method="post" action="/account/address/<%= a.id %>/default?_csrf=<%= csrf %>"><button class="btn sm o">پیش‌فرض کن</button></form><% } %>
+<form method="post" action="/account/address/<%= a.id %>/delete?_csrf=<%= csrf %>" data-confirm="این آدرس حذف شود؟"><button class="btn sm o dl"><%- ic('trash') %></button></form></div></div><% }) %></div>
+
+<form class="aform" id="aform" method="post" action="/account/address?_csrf=<%= csrf %>" hidden><h4 id="atitle">آدرس جدید</h4><input type="hidden" name="id" id="aid">
+<div class="chipsel" id="ttl"><button type="button" data-v="منزل">منزل</button><button type="button" data-v="محل کار">محل کار</button><button type="button" data-v="دیگر">دیگر</button></div>
+<div class="fld"><label>عنوان</label><div class="fi"><%- ic('star') %><input name="title" id="atl" maxlength="40" placeholder="مثلاً منزل" required></div></div>
+<div class="row2"><div class="fld"><label>نام و نام خانوادگی گیرنده</label><div class="fi"><%- ic('user') %><input name="receiver" id="arc" maxlength="100" required value="<%= full %>"></div></div>
+<div class="fld"><label>موبایل گیرنده</label><div class="fi"><%- ic('mobile') %><input name="receiver_phone" id="arp" dir="ltr" inputmode="numeric" maxlength="11" pattern="09[0-9]{9}" placeholder="09123456789" required value="<%= user.phone %>"></div></div></div>
+<div class="row2"><div class="fld"><label>استان</label><div class="fi"><%- ic('map') %><input name="province" id="apv" list="provs" maxlength="50" required placeholder="مثلاً تهران"></div></div>
+<div class="fld"><label>شهر</label><div class="fi"><%- ic('pin') %><input name="city" id="act" maxlength="50" required placeholder="مثلاً تهران"></div></div></div>
+<div class="fld"><label>کد پستی (۱۰ رقم)</label><div class="fi"><%- ic('mail') %><input name="postal_code" id="apc" dir="ltr" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" required placeholder="1234567890"></div></div>
+<div class="fld"><label>نشانی دقیق (خیابان، کوچه، پلاک، واحد)</label><textarea name="address" id="aad" rows="3" required placeholder="استان، شهر، خیابان، پلاک، واحد"></textarea></div>
+<label>موقعیت روی نقشه <small>(اختیاری)</small></label><button type="button" id="locate" class="btn sm o"><%- ic('pin') %> موقعیت فعلی من</button><div id="map"></div>
+<input type="hidden" name="lat" id="lat"><input type="hidden" name="lng" id="lng">
+<div style="display:flex;gap:10px;margin-top:16px"><button class="btn" style="flex:1"><%- ic('check') %> ذخیره آدرس</button><button type="button" class="btn o" id="acancel">انصراف</button></div></form></div>
+</div>
+<section class="pwc" id="pw"><div class="pwc-h"><span class="pwc-i"><%- ic('lock') %></span><div><h3><%= user.password?'تغییر رمز عبور':'تعیین رمز عبور' %></h3><p><%= user.password?'برای امنیت بیشتر، رمز خود را هر چند وقت یک‌بار عوض کنید.':'هنوز رمز عبور ندارید؛ با تعیین رمز می‌توانید بدون کد پیامکی وارد شوید.' %></p></div>
+<span class="pill <%= user.password?'ok':'warn' %>"><%= user.password?'رمز فعال است':'بدون رمز' %></span></div>
+<div class="pwc-b"><form method="post" action="/account/password?_csrf=<%= csrf %>" id="pwf">
+<% if(user.password){ %><div class="fld"><label>رمز فعلی</label><div class="fi pw"><%- ic('lock') %><input type="password" name="current" required autocomplete="current-password" placeholder="رمز فعلی خود را وارد کنید"><button type="button" class="eye" aria-label="نمایش"><%- ic('eye') %></button></div></div><% } %>
+<div class="fld"><label>رمز جدید</label><div class="fi pw"><%- ic('lock') %><input type="password" name="password" id="np" minlength="6" required autocomplete="new-password" placeholder="حداقل ۶ کاراکتر"><button type="button" class="eye" aria-label="نمایش"><%- ic('eye') %></button></div>
+<div class="meter"><i id="mt"></i></div><small id="mtx" class="mtx"></small></div>
+<div class="fld"><label>تکرار رمز جدید</label><div class="fi pw"><%- ic('check') %><input type="password" name="password2" id="np2" minlength="6" required autocomplete="new-password" placeholder="رمز جدید را دوباره بنویسید"><button type="button" class="eye" aria-label="نمایش"><%- ic('eye') %></button></div><small id="mm" class="mm"></small></div>
+<button class="btn" style="width:100%;margin-top:18px"><%- ic('shield') %> <%= user.password?'تغییر رمز عبور':'ذخیره رمز عبور' %></button></form>
+<aside class="pwc-t"><b><%- ic('shield') %> یک رمز امن چه ویژگی‌هایی دارد؟</b><ul><li>حداقل ۶ کاراکتر (بهتر: ۱۰ به بالا)</li><li>ترکیبی از حروف و عدد</li><li>یک نماد مثل ! یا @ اضافه کنید</li><li>از شماره موبایل یا تاریخ تولد استفاده نکنید</li></ul>
+<% if(user.password){ %><small>رمز را فراموش کرده‌اید؟ <a href="/forgot">بازیابی با کد پیامکی</a></small><% } %></aside></div></section>
+</section>
+<datalist id="provs"><% ['آذربایجان شرقی','آذربایجان غربی','اردبیل','اصفهان','البرز','ایلام','بوشهر','تهران','چهارمحال و بختیاری','خراسان جنوبی','خراسان رضوی','خراسان شمالی','خوزستان','زنجان','سمنان','سیستان و بلوچستان','فارس','قزوین','قم','کردستان','کرمان','کرمانشاه','کهگیلویه و بویراحمد','گلستان','گیلان','لرستان','مازندران','مرکزی','هرمزگان','همدان','یزد'].forEach(p=>{ %><option value="<%= p %>"><% }) %></datalist>
+<%- include('partials/foot') %>

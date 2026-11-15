@@ -1,0 +1,7 @@
+<%- include('_h',{t:'نظرات صفحه اصلی',sub:'نظرات مشتریان که در صفحه اصلی نمایش داده می‌شوند'}) %>
+<div class="cgrid"><% rows.concat([{id:'',name:'',text:'',stars:5,sort:rows.length+1,active:1}]).forEach(r=>{ %><form class="card <%= r.id?'':'new' %>" method="post" action="<%= ADM %>/testimonials/save?_csrf=<%= csrf %>" enctype="multipart/form-data"><input type="hidden" name="id" value="<%= r.id %>">
+<% if(!r.id){ %><h3><%- ic('plus') %> نظر جدید</h3><% } %>
+<label>نام</label><input name="name" value="<%= r.name %>" required><label>متن نظر</label><textarea name="text" rows="3" required><%= r.text %></textarea>
+<div class="fgrid"><div><label>امتیاز (۱ تا ۵)</label><input type="number" min="1" max="5" name="stars" value="<%= r.stars %>"></div><div><label>ترتیب</label><input type="number" name="sort" value="<%= r.sort %>"></div></div>
+<label class="sw"><span>نمایش</span><input type="checkbox" name="active" <%= r.active?'checked':'' %>><i></i></label>
+<div class="acts2" style="margin-top:12px"><button class="btn sm"><%= r.id?'ذخیره':'افزودن' %></button><% if(r.id){ %><button class="ib d" type="submit" formaction="<%= ADM %>/testimonials/<%= r.id %>/delete?_csrf=<%= csrf %>" formnovalidate data-cc="حذف شود؟"><%- ic('trash') %></button><% } %></div></form><% }) %></div><%- include('_f') %>

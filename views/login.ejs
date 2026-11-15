@@ -1,0 +1,29 @@
+<!DOCTYPE html><html lang="fa" dir="rtl"><head><script src="/js/theme.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf" content="<%= csrf %>"><meta name="robots" content="noindex"><title>ورود / ثبت‌نام | VELORA</title><link rel="stylesheet" href="/css/style.css?v=<%= v %>"></head>
+<body class="auth"><div class="authwrap">
+<div class="authart"><img src="/img/logo.svg" alt="VELORA"><h2><%= S.hero_title %></h2><p>با ورود به VELORA از تخفیف‌های اختصاصی، پیگیری سفارش و پیشنهادهای شخصی‌سازی‌شده بهره‌مند شوید.</p>
+<div style="display:flex;gap:26px;margin-top:30px;position:relative"><div><%- ic('check') %><br><small>اصالت کالا</small></div><div><%- ic('truck') %><br><small>ارسال سریع</small></div><div><%- ic('gift') %><br><small>هدیه خرید اول</small></div></div></div>
+<div class="authform"><div class="acard">
+<div style="display:flex;justify-content:space-between;align-items:center"><a href="/" class="btn sm o"><%- ic('arrowl') %> بازگشت به فروشگاه</a><button class="tg" type="button" id="theme"><%- ic('sun','i-sun') %><%- ic('moon','i-moon') %></button></div><br>
+<% const T={login:['ورود به حساب','با شماره موبایل و رمز عبور وارد شوید.'],register:['ساخت حساب جدید','شماره موبایل خود را تایید کنید و رمز بسازید.'],forgot:['فراموشی رمز عبور','با کد تایید، رمز جدید بسازید.'],otp:['ورود با کد یکبار مصرف','کد تایید به موبایل شما ارسال می‌شود.']}; const m=typeof mode==='undefined'?'login':mode; const st=typeof step==='undefined'?'phone':step; const ph=typeof phone==='undefined'?'':phone; const dc=typeof devCode==='undefined'?null:devCode; %>
+<% if(m==='login'){ %><div class="tabs2"><a class="on" href="/login">ورود</a><a href="/register">ثبت‌نام</a></div><% }else if(m==='register'){ %><div class="tabs2"><a href="/login">ورود</a><a class="on" href="/register">ثبت‌نام</a></div><% } %>
+<% if(m!=='login'&&m!=='otp'){ %><div class="steps"><i class="on"></i><i class="<%= st!=='phone'?'on':'' %>"></i><i class="<%= st==='password'?'on':'' %>"></i></div><% } %>
+<% if(typeof error!=='undefined'&&error){ %><div class="err"><%= error %></div><% } %><% if(typeof ok!=='undefined'&&ok){ %><div class="flash"><%= ok %></div><% } %>
+<h1><%= T[m][0] %> <%- ic(st==='password'||m==='login'?'lock':'wave') %></h1><p style="color:var(--mut)"><%= st==='code'?'کد ۵ رقمی ارسال‌شده به':st==='password'?'کد تایید شد. رمز عبور جدید برای':T[m][1] %><% if(st!=='phone'){ %> <b dir="ltr"><%= ph %></b><% } %><% if(st==='code'){ %> را وارد کنید. <a href="/<%= m==='otp'?'login?otp=1':m %>" style="color:var(--gold)">ویرایش شماره</a><% }else if(st==='password'){ %> را انتخاب کنید.<% } %></p>
+<% if(st==='phone'){ %>
+<form method="post" action="<%= m==='login'?'/login/password':m==='otp'?'/login/send':'/'+m+'/send' %>?_csrf=<%= csrf %>"><label>نام کاربری (شماره موبایل)</label><div class="ph"><span>+۹۸</span><input name="phone" value="<%= ph %>" placeholder="9123456789" inputmode="numeric" maxlength="13" required autofocus autocomplete="username"></div>
+<% if(m==='login'){ %><label>رمز عبور</label><div class="pw"><input type="password" name="password" required autocomplete="current-password" placeholder="رمز عبور"><button type="button" class="eye" aria-label="نمایش"><%- ic('eye') %></button></div><a class="lnk" href="/forgot">رمز عبور را فراموش کرده‌اید؟</a><% } %><br>
+<button class="btn lg" style="width:100%"><%= m==='login'?'ورود':m==='register'?'دریافت کد تایید':'دریافت کد تایید' %></button></form>
+<% if(m==='login'){ %><p class="alt">یا <a href="/login?otp=1">ورود با کد یکبار مصرف</a> · حساب ندارید؟ <a href="/register">ثبت‌نام</a></p><% }else{ %><p class="alt"><a href="/login">بازگشت به ورود</a></p><% } %>
+<% }else if(st==='code'){ %>
+<% if(dc){ %><div class="hint"><%- ic('flask') %> حالت آزمایشی (بدون پیامک) — کد شما: <b><%= dc %></b></div><% } %>
+<form method="post" action="<%= m==='otp'?'/login/verify':'/'+m+'/verify' %>?_csrf=<%= csrf %>"><input type="hidden" name="phone" value="<%= ph %>"><input type="hidden" name="code" id="code">
+<div class="otpbox"><% for(let i=0;i<5;i++){ %><input inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="رقم <%= i+1 %>"><% } %></div>
+<button class="btn lg" style="width:100%">تایید کد</button><p id="resend" style="text-align:center;color:var(--mut);font-size:13px;margin-top:14px"></p></form>
+<% }else{ %>
+<form method="post" action="/<%= m %>/password?_csrf=<%= csrf %>" id="pwf"><label>نام کاربری</label><div class="ph"><span>+۹۸</span><input value="<%= ph.replace(/^0/,'') %>" disabled></div>
+<label>رمز عبور جدید</label><div class="pw"><input type="password" name="password" id="np" required minlength="6" autocomplete="new-password" placeholder="حداقل ۶ کاراکتر" autofocus><button type="button" class="eye" aria-label="نمایش"><%- ic('eye') %></button></div>
+<div class="meter"><i id="mt"></i></div><small id="mtx" style="color:var(--mut)"></small>
+<label>تکرار رمز عبور</label><div class="pw"><input type="password" name="password2" id="np2" required minlength="6" autocomplete="new-password" placeholder="تکرار رمز"></div><small id="mm" style="color:var(--red)"></small><br>
+<button class="btn lg" style="width:100%;margin-top:10px"><%= m==='register'?'ساخت حساب':'ذخیره رمز جدید' %></button></form>
+<% } %>
+</div></div></div><script src="/js/app.js?v=<%= v %>"></script></body></html>

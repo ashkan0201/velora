@@ -1,0 +1,16 @@
+<%- include('partials/head') %>
+<section class="acc"><div class="cmp">
+<div class="cmp-h"><span class="nb nb1"></span><div class="cmp-i"><%- ic('user') %></div><h1>تکمیل اطلاعات</h1><p>برای ارسال سفارش با پست پیشتاز یا تیپاکس، این اطلاعات لازم است.</p>
+<div class="steps"><i class="on"></i><i class="on"></i><i class="<%= user.first_name&&a.postal_code?'on':'' %>"></i></div></div>
+<form class="card2" method="post" action="/account/complete?_csrf=<%= csrf %>"><input type="hidden" name="next" value="<%= next %>">
+<div class="row2"><div class="fld"><label>نام *</label><div class="fi"><%- ic('user') %><input name="first_name" required maxlength="60" value="<%= user.first_name %>" placeholder="نام"></div></div>
+<div class="fld"><label>نام خانوادگی *</label><div class="fi"><%- ic('user') %><input name="last_name" required maxlength="60" value="<%= user.last_name %>" placeholder="نام خانوادگی"></div></div></div>
+<div class="fld"><label>شماره تماس</label><div class="fi"><%- ic('mobile') %><input value="<%= user.phone %>" disabled dir="ltr"></div></div>
+<div class="fld"><label>ایمیل <small>(اختیاری)</small></label><div class="fi"><%- ic('mail') %><input type="email" name="email" value="<%= user.email %>" dir="ltr" placeholder="example@mail.com"></div></div>
+<div class="row2"><div class="fld"><label>استان *</label><div class="fi"><%- ic('map') %><input name="province" list="provs" required maxlength="50" value="<%= a.province||'' %>"></div></div>
+<div class="fld"><label>شهر *</label><div class="fi"><%- ic('pin') %><input name="city" required maxlength="50" value="<%= a.city||'' %>"></div></div></div>
+<div class="fld"><label>کد پستی (۱۰ رقم) *</label><div class="fi"><%- ic('mail') %><input name="postal_code" required dir="ltr" inputmode="numeric" maxlength="10" pattern="[0-9۰-۹]{10}" value="<%= a.postal_code||'' %>" placeholder="1234567890"></div></div>
+<div class="fld"><label>نشانی دقیق *</label><textarea name="address" required rows="3" placeholder="خیابان، کوچه، پلاک، واحد"><%= a.address||'' %></textarea></div>
+<button class="btn lg" style="width:100%;margin-top:18px"><%- ic('check') %> ذخیره و ادامه</button></form>
+<datalist id="provs"><% ['آذربایجان شرقی','آذربایجان غربی','اردبیل','اصفهان','البرز','ایلام','بوشهر','تهران','چهارمحال و بختیاری','خراسان جنوبی','خراسان رضوی','خراسان شمالی','خوزستان','زنجان','سمنان','سیستان و بلوچستان','فارس','قزوین','قم','کردستان','کرمان','کرمانشاه','کهگیلویه و بویراحمد','گلستان','گیلان','لرستان','مازندران','مرکزی','هرمزگان','همدان','یزد'].forEach(p=>{ %><option value="<%= p %>"><% }) %></datalist>
+</div></section><%- include('partials/foot') %>

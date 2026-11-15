@@ -1,0 +1,5 @@
+<article class="pc"><% if(p.discount>0){ %><span class="badge">٪<%= fa(p.discount) %></span><% } %>
+<a class="im" href="/product/<%= p.slug %>"><% if(p.image){ %><img loading="lazy" src="<%= p.image %>" alt="<%= p.name %>"><% }else{ %><%- ic('spark') %><% } %></a>
+<div class="b"><span class="br"><%= p.brand %></span><h3><a href="/product/<%= p.slug %>"><%= p.name %></a></h3><div class="bf"><%= p.brief %></div>
+<div class="price"><b><%= fa(fp(p)) %> تومان</b><% if(p.discount>0){ %><s><%= fa(p.price) %></s><% } %></div>
+<% if(p.stock>0){ %><form class="addcart" method="post" action="/cart/add?_csrf=<%= csrf %>" style="margin-top:12px"><input type="hidden" name="id" value="<%= p.id %>"><button class="btn sm" style="width:100%"><%- ic('bag') %> افزودن به سبد</button></form><% }else{ %><p style="color:var(--red);margin:10px 0 0">ناموجود</p><% } %></div></article>

@@ -1,0 +1,6 @@
+node_modules
+.session-secret
+.admin-credentials.txt
+velora.db*
+*.log
+.env

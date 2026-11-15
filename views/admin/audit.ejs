@@ -1,0 +1,2 @@
+<%- include('_h',{t:'گزارش امنیتی',sub:'۲۰۰ رویداد آخر (ورود و تغییرات)'}) %>
+<div class="tbl"><div class="scr"><table><thead><tr><th>زمان</th><th>کاربر</th><th>رویداد</th><th>IP</th></tr></thead><tbody><% rows.forEach(r=>{ %><tr><td><%= fd(r.created) %></td><td><%= r.who %></td><td><span class="pill <%= /FAIL/.test(r.action)?'bad':'ok' %>"><%= r.action %></span></td><td dir="ltr"><%= r.ip %></td></tr><% }) %></tbody></table></div></div><%- include('_f') %>
