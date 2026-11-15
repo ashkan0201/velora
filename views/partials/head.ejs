@@ -1,0 +1,16 @@
+<!DOCTYPE html><html lang="fa" dir="rtl"><head><script src="/js/theme.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf" content="<%= csrf %>">
+<title><%= meta.title %></title><meta name="description" content="<%= meta.desc %>"><meta name="keywords" content="<%= S.seo_keywords %>">
+<link rel="canonical" href="<%= SITE+meta.path %>"><link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="<%= meta.type %>"><meta property="og:title" content="<%= meta.title %>"><meta property="og:description" content="<%= meta.desc %>">
+<meta property="og:image" content="<%= SITE+meta.image %>"><meta property="og:locale" content="fa_IR"><meta property="og:site_name" content="VELORA"><meta name="theme-color" content="#f2f7ff">
+<script type="application/ld+json" nonce="<%= nonce %>"><%- JSON.stringify(meta.ld||{'@context':'https://schema.org','@type':'Store',name:'VELORA',url:SITE,logo:SITE+'/img/logo.svg',telephone:S.phone,address:S.address}) %></script>
+<link rel="stylesheet" href="/css/style.css?v=<%= v %>">
+<% if(typeof map!=='undefined'){ %><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><% } %>
+</head><body>
+<% if(S.mq_on!=='0'){ const ml=(S.mq_text||'').split('\n').map(x=>x.trim()).filter(Boolean); %><div class="top"><div class="mq" style="animation-duration:<%= Math.max(5,+S.mq_speed||30) %>s"><% for(let i=0;i<4;i++){ ml.forEach(t=>{ %><span><%- ic('spark') %> <%= t %></span><% }) } %></div></div><% } %>
+<header class="site"><div class="wrap"><div class="hrow">
+<a class="logo" href="/"><img src="/img/logo.svg" alt="VELORA"></a>
+<form class="search" action="/shop"><input name="q" placeholder="جستجوی محصول، برند..." value="<%= typeof q!=='undefined'?q:'' %>"><button>جستجو</button></form>
+<div class="acts"><button class="tg" type="button" id="theme" aria-label="تغییر تم"><%- ic('sun','i-sun') %><%- ic('moon','i-moon') %></button><% if(user){ %><a href="/account"><%- ic('user') %> <%= user.first_name||"حساب من" %></a><% }else{ %><a href="/login">ورود / ثبت‌نام</a><% } %><a href="/cart"><%- ic('bag') %> سبد <span class="cnt"><%= fa(cartCount) %></span></a></div></div>
+<nav class="cats"><a href="/shop">همه محصولات</a><a href="/shop?deals=1" style="color:var(--red)"><%- ic('fire') %> تخفیف‌ها</a><% cats.forEach(c=>{ %><div class="ni<%= c.subs.length?' has':'' %>"><a href="/category/<%= c.slug %>"><%= c.name %><% if(c.subs.length){ %> <small>▾</small><% } %></a><% if(c.subs.length){ %><div class="mega"><a class="all" href="/category/<%= c.slug %>">همهٔ <%= c.name %> ‹</a><% c.subs.forEach((s,j)=>{ %><a href="/category/<%= s.slug %>" style="--j:<%= j %>"><i></i><%= s.name %></a><% }) %></div><% } %></div><% }) %></nav></div></header>
+<main class="wrap"><% if(flash){ %><div class="flash"><%= flash %></div><% } %>

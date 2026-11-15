@@ -1,0 +1,7 @@
+<%- include('partials/head') %>
+<div class="pagehead"><div style="font-size:13px;opacity:.8"><a href="/">خانه</a> / <%= title %></div><h1><%= title %></h1><small><%= fa(products.length) %> محصول</small></div>
+<% if(typeof subs!=='undefined'&&(subs.length||parent)){ const kids=subs.length?subs:[]; %><div class="subchips"><% if(parent){ %><a href="/category/<%= parent.slug %>">‹ <%= parent.name %></a><% } %><% kids.forEach((k,i)=>{ %><a href="/category/<%= k.slug %>" style="--j:<%= i %>"><%= k.name %></a><% }) %></div><% } %>
+<div class="filters"><% const base=category?'/category/'+category.slug:'/shop'; const qs=(s)=>base+'?'+(q?'q='+encodeURIComponent(q)+'&':'')+(s?'sort='+s:''); %>
+<a class="<%= !sort?'on':'' %>" href="<%= qs('') %>">جدیدترین</a><a class="<%= sort=='cheap'?'on':'' %>" href="<%= qs('cheap') %>">ارزان‌ترین</a><a class="<%= sort=='exp'?'on':'' %>" href="<%= qs('exp') %>">گران‌ترین</a><a class="<%= sort=='off'?'on':'' %>" href="<%= qs('off') %>">بیشترین تخفیف</a></div>
+<% if(!products.length){ %><div class="box" style="text-align:center"><div style="font-size:60px"><%- ic('search') %></div><p>محصولی یافت نشد.</p><a class="btn" href="/shop">همه محصولات</a></div><% } %><div class="grid"><% products.forEach(p=>{ %><%- include('partials/card',{p}) %><% }) %></div>
+<%- include('partials/foot') %>

@@ -1,0 +1,6 @@
+</main><footer class="site"><div class="wrap"><div class="fg">
+<div><img src="/img/logo.svg" alt="VELORA" style="height:46px;filter:invert(1) hue-rotate(180deg) brightness(1.3)"><p><%= S.about %></p></div>
+<div><h4>دسترسی سریع</h4><a href="/shop">محصولات</a><br><a href="/shop?deals=1">تخفیف‌ها</a><br><a href="/page/about">درباره ما</a><br><a href="/account">حساب کاربری</a></div>
+<div><h4>تماس با ما</h4><%- ic('phone') %> <%= S.phone %><br><%- ic('mobile') %> <%= S.mobile %><br><%- ic('mail') %> <%= S.email %><br><%- ic('pin') %> <%= S.address %><br><%- ic('clock') %> <%= S.hours %><% if(S.instagram){ %><br><%- ic('ig') %> <a href="https://instagram.com/<%= S.instagram %>">@<%= S.instagram %></a><% } %></div>
+</div><p style="text-align:center;font-size:13px;margin-top:24px">© <%= S.store_name %> — <%= S.footer_note %> · </p></div></footer>
+<script src="/js/app.js?v=<%= v %>"></script></body></html>

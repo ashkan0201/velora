@@ -1,0 +1,20 @@
+<%- include('partials/head') %>
+<div class="crumbs"><a href="/">خانه</a> / <% if(p.cat_slug){ %><a href="/category/<%= p.cat_slug %>"><%= p.cat_name %></a> / <% } %><%= p.name %></div>
+<div class="pdp"><div class="gal"><div class="big"><% if(images.length){ %><img src="<%= images[0] %>" alt="<%= p.name %>"><% }else{ %><%- ic('spark') %><% } %></div>
+<% if(images.length>1){ %><div class="thumbs"><% images.forEach((im,i)=>{ %><img class="<%= i?'':'on' %>" src="<%= im %>" alt="تصویر <%= i+1 %>"><% }) %></div><% } %></div>
+<div><span class="br" style="color:var(--gold);letter-spacing:1px"><%= p.brand %></span><h1><%= p.name %></h1>
+<div><%- stars(avg) %> <a href="#reviews" style="color:var(--mut);font-size:13px"><%= fa(reviews.length) %> نظر</a></div>
+<p style="color:var(--mut)"><%= p.brief %></p>
+<div class="chips"><% if(p.size){ %><span><%- ic('ruler') %> <%= p.size %></span><% } %><span><%- ic('check') %> اصالت کالا</span><span><%= p.stock>0?'موجود در انبار':'ناموجود' %></span><span><%- ic('eye') %> <%= fa(p.views) %> بازدید</span></div>
+<div class="price"><b style="font-size:30px"><%= fa(fp(p)) %> تومان</b><% if(p.discount>0){ %><s><%= fa(p.price) %></s><span class="badge" style="position:static">٪<%= fa(p.discount) %></span><% } %></div>
+<% if(p.daily_deal && p.deal_ends){ %><p>⏳ پایان تخفیف: <span class="timer" data-end="<%= p.deal_ends %>"></span></p><% } %>
+<% if(p.stock>0){ %><form class="addcart" method="post" action="/cart/add?_csrf=<%= csrf %>"><input type="hidden" name="id" value="<%= p.id %>"><div style="display:flex;gap:12px;margin:18px 0;flex-wrap:wrap"><div class="qty"><button type="button">+</button><input name="qty" value="1" min="1" max="<%= p.stock %>" readonly><button type="button">−</button></div><button class="btn lg" style="flex:1"><%- ic('bag') %> افزودن به سبد خرید</button></div></form>
+<% if(p.stock<=5){ %><p style="color:var(--red)"><%- ic('fire') %> فقط <%= fa(p.stock) %> عدد باقی مانده!</p><% } %><% }else{ %><p style="color:var(--red)">ناموجود</p><% } %>
+<% if(p.features){ %><ul class="feat"><% p.features.split('\n').filter(Boolean).forEach(f=>{ %><li><%= f %></li><% }) %></ul><% } %></div></div>
+<div class="tabs"><nav><button class="on" data-t="t1">توضیحات کامل</button><button data-t="t2">نحوه استفاده</button><button data-t="t3">مواد تشکیل‌دهنده</button><button data-t="t4" id="reviews">نظرات (<%= fa(reviews.length) %>)</button></nav>
+<div class="pane on" id="t1"><%= p.description||'—' %></div><div class="pane" id="t2"><%= p.how_to_use||'—' %></div><div class="pane" id="t3"><%= p.ingredients||'—' %></div>
+<div class="pane" id="t4" style="white-space:normal"><% reviews.forEach(r=>{ %><div class="rev"><b><%= r.name %></b> <%- stars(r.rating) %><p style="margin:4px 0"><%= r.body %></p></div><% }) %><% if(!reviews.length){ %><p>هنوز نظری ثبت نشده. اولین نفر باشید!</p><% } %>
+<h4>ثبت نظر</h4><form method="post" action="/product/<%= p.slug %>/review?_csrf=<%= csrf %>"><div class="rating"><% for(let i=5;i>=1;i--){ %><input type="radio" id="r<%= i %>" name="rating" value="<%= i %>" <%= i==5?'checked':'' %>><label for="r<%= i %>"><%- ic('star') %></label><% } %></div><textarea name="body" rows="3" maxlength="800" required placeholder="نظر شما..."></textarea><br><br><button class="btn sm">ارسال نظر</button></form></div></div>
+<% if(similar.length){ %><section class="sec"><h2><span class="t">محصولات مشابه</span></h2><div class="grid"><% similar.forEach(p=>{ %><%- include('partials/card',{p}) %><% }) %></div></section><% } %>
+<% if(p.stock>0){ %><div class="sticky-buy"><div><b><%= p.name %></b> · <%= fa(fp(p)) %> تومان</div><form class="addcart" method="post" action="/cart/add?_csrf=<%= csrf %>"><input type="hidden" name="id" value="<%= p.id %>"><button class="btn sm"><%- ic('bag') %> افزودن به سبد</button></form></div><% } %>
+<%- include('partials/foot') %>

@@ -1,0 +1,4 @@
+<% const flow=['pending_payment','paid','shipped','done']; const labels=['ثبت سفارش','پرداخت','ارسال','تحویل']; const icons=['bag','card','truck','gift'];
+const idx=o.status==='canceled'?-1:flow.indexOf(o.status); %>
+<% if(o.status==='canceled'){ %><div class="err" style="display:flex;gap:8px;align-items:center"><%- ic('x') %> این سفارش لغو شده است.</div><% }else{ %>
+<div class="track" style="--p:<%= idx/(flow.length-1)*100 %>%"><div class="line"><i></i></div><% flow.forEach((f,k)=>{ %><div class="stp <%= k<idx?'done':k===idx?'cur':'' %>" style="--i:<%= k %>"><span class="dot"><%- ic(k<idx?'check':icons[k]) %></span><small><%= labels[k] %></small></div><% }) %></div><% } %>

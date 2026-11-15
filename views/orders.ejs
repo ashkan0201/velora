@@ -1,0 +1,9 @@
+<%- include('partials/head') %>
+<div class="pagehead"><div style="font-size:13px;opacity:.85"><a href="/account">حساب کاربری</a> / سفارش‌های من</div><h1>سفارش‌های من</h1><small><%= fa(orders.length) %> سفارش</small></div>
+<% if(!orders.length){ %><div class="box" style="text-align:center"><div class="empty"><%- ic('box') %></div><p>هنوز سفارشی ثبت نکرده‌اید.</p><a class="btn" href="/shop">شروع خرید</a></div><% } %>
+<div class="olist"><% orders.forEach((o,n)=>{ const s=ST[o.status]||[o.status,'mute']; %><a class="ocard" href="/account/orders/<%= o.id %>" style="--n:<%= n %>">
+<div class="ohead"><div><b class="onum">سفارش #<%= fa(o.id) %></b><small><%= fd(o.created) %></small></div><span class="pill <%= s[1] %>"><%= s[0] %></span></div>
+<div class="othumbs"><% o.items.slice(0,5).forEach(i=>{ %><span class="ot"><% if(i.image){ %><img src="<%= i.image %>" alt=""><% }else{ %><%- ic('bottle') %><% } %><% if(i.qty>1){ %><em><%= fa(i.qty) %>×</em><% } %></span><% }) %><% if(o.items.length>5){ %><span class="ot more">+<%= fa(o.items.length-5) %></span><% } %></div>
+<%- include('partials/track',{o}) %>
+<div class="ofoot"><span>مبلغ کل: <b><%= fa(o.total) %> تومان</b><%= o.ship_collect?' · پس‌کرایه':'' %></span><span class="go">مشاهده جزئیات <%- ic('arrowl') %></span></div></a><% }) %></div>
+<%- include('partials/foot') %>

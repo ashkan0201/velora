@@ -1,0 +1,26 @@
+<%- include('_h',{t:'دسته‌بندی‌ها',sub:'دسته‌های اصلی در نوار بالای سایت هستند و زیرمجموعه‌ها در منوی بازشونده نمایش داده می‌شوند'}) %>
+<div class="cathelp"><b>راهنما:</b> ۱) یک دسته اصلی بسازید. ۲) داخل همان کارت، زیرمجموعه اضافه کنید. ۳) هنگام ثبت محصول، دسته یا زیرمجموعه را انتخاب کنید.</div>
+<% const mains=rows.filter(r=>!r.parent_id); const subsOf=id=>rows.filter(r=>r.parent_id==id); %>
+<div class="ctree">
+<% mains.forEach(c=>{ %>
+<section class="card ct">
+  <header><span class="ci2"><% if(c.image){ %><img src="<%= c.image %>" alt=""><% }else{ %><%- ic(catIcon(c.slug)) %><% } %></span><div><h3><%= c.name %></h3><small><%= fa(c.n) %> محصول · <%= fa(subsOf(c.id).length) %> زیرمجموعه</small></div>
+  <details class="ed"><summary>ویرایش دسته</summary>
+    <form method="post" action="<%= ADM %>/categories/save?_csrf=<%= csrf %>" enctype="multipart/form-data"><input type="hidden" name="id" value="<%= c.id %>"><input type="hidden" name="old_image" value="<%= c.image %>"><input type="hidden" name="parent_id" value="0">
+    <label>نام</label><input name="name" value="<%= c.name %>" required><label>ترتیب در منو (عدد کمتر = اول‌تر)</label><input type="number" name="sort" value="<%= c.sort %>"><label>تصویر (اختیاری)</label><input type="file" name="image" accept="image/*">
+    <div class="acts2" style="margin-top:12px"><button class="btn sm">ذخیره</button><button class="ib d" type="submit" formaction="<%= ADM %>/categories/<%= c.id %>/delete?_csrf=<%= csrf %>" formnovalidate data-cc="این دسته حذف شود؟ محصولاتش بدون دسته می‌شوند." title="حذف"><%- ic('trash') %></button></div></form>
+  </details></header>
+  <div class="subs">
+    <% subsOf(c.id).forEach(s=>{ %>
+    <form class="sub" method="post" action="<%= ADM %>/categories/save?_csrf=<%= csrf %>" enctype="multipart/form-data"><input type="hidden" name="id" value="<%= s.id %>"><input type="hidden" name="old_image" value="<%= s.image %>"><input type="hidden" name="parent_id" value="<%= c.id %>"><input type="hidden" name="sort" value="<%= s.sort %>">
+      <i></i><input name="name" value="<%= s.name %>" required><em><%= fa(s.n) %> محصول</em><button class="btn sm" title="ذخیره نام">ذخیره</button><button class="ib d" type="submit" formaction="<%= ADM %>/categories/<%= s.id %>/delete?_csrf=<%= csrf %>" formnovalidate data-cc="این زیرمجموعه حذف شود؟" title="حذف"><%- ic('trash') %></button></form>
+    <% }) %>
+    <form class="sub add" method="post" action="<%= ADM %>/categories/save?_csrf=<%= csrf %>" enctype="multipart/form-data"><input type="hidden" name="id" value=""><input type="hidden" name="parent_id" value="<%= c.id %>"><input type="hidden" name="sort" value="<%= subsOf(c.id).length+1 %>">
+      <i>+</i><input name="name" placeholder="نام زیرمجموعهٔ جدید برای «<%= c.name %>»" required><button class="btn sm">افزودن</button></form>
+  </div>
+</section>
+<% }) %>
+<section class="card ct newc"><header><span class="ci2">+</span><div><h3>دستهٔ اصلی جدید</h3><small>مثلاً «مراقبت از ناخن»</small></div></header>
+<form class="sub add" method="post" action="<%= ADM %>/categories/save?_csrf=<%= csrf %>" enctype="multipart/form-data"><input type="hidden" name="id" value=""><input type="hidden" name="parent_id" value="0"><input type="hidden" name="sort" value="<%= mains.length+1 %>"><i>+</i><input name="name" placeholder="نام دسته" required><button class="btn sm">ساخت دسته</button></form></section>
+</div>
+<%- include('_f') %>
