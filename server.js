@@ -60,7 +60,7 @@ const normPhone=p=>{p=String(p||'').replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'
 const productsQ=(where='',args=[],order='created DESC',limit=100)=>db.prepare(`SELECT p.*,c.name cat_name,c.slug cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.active=1 ${where} ORDER BY ${order} LIMIT ${limit}`).all(...args);
 
 app.use((req,res,next)=>{
-  const s=getSettings(); res.locals.ic=ic;res.locals.stars=stars;res.locals.catIcon=catIcon;delete s.admin_path;res.locals.smsHasKey=!!s.sms_key;delete s.sms_key;res.locals.ADM=ADM;res.locals.ST={pending_payment:['در انتظار پرداخت','warn'],paid:['پرداخت‌شده','ok'],shipped:['ارسال‌شده','info'],done:['تحویل‌شده','ok'],canceled:['لغوشده','bad']};res.locals.fd=d=>{try{return new Date(String(d).replace(' ','T')+'Z').toLocaleDateString('fa-IR')}catch(e){return d}};res.locals.S=s; res.locals.v=VER; res.locals.fp=finalPrice; res.locals.fa=toFa; res.locals.SITE=SITE;
+  const s=getSettings(); res.locals.ic=ic;res.locals.stars=stars;res.locals.catIcon=catIcon;delete s.admin_path;res.locals.smsHasKey=!!s.sms_key;delete s.sms_key;res.locals.ADM=ADM;res.locals.ST={pending_payment:['در انتظار پرداخت','warn'],paid:['پرداخت‌شده','ok'],shipped:['ارسال‌شده','info'],done:['تحویل‌شده','ok'],canceled:['لغوشده','bad'],failed:['پرداخت ناموفق','bad']};res.locals.fd=d=>{try{return new Date(String(d).replace(' ','T')+'Z').toLocaleDateString('fa-IR')}catch(e){return d}};res.locals.S=s; res.locals.v=VER; res.locals.fp=finalPrice; res.locals.fa=toFa; res.locals.SITE=SITE;
   const allc=db.prepare('SELECT * FROM categories ORDER BY sort,id').all();res.locals.allcats=allc;
   res.locals.cats=allc.filter(c=>!c.parent_id).map(c=>Object.assign({},c,{subs:allc.filter(x=>x.parent_id===c.id)}));
   res.locals.user=req.session.userId?db.prepare('SELECT * FROM users WHERE id=?').get(req.session.userId):null;if(req.session.userId&&!res.locals.user)delete req.session.userId;
@@ -71,6 +71,9 @@ app.use((req,res,next)=>{
 });
 
 // expire timed discounts
+const failStale=()=>{try{const o=db.prepare("SELECT id FROM orders WHERE status='pending_payment' AND created<datetime('now','-1 hour')").all();
+  o.forEach(x=>{db.prepare("UPDATE orders SET status='failed' WHERE id=?").run(x.id);db.prepare('SELECT product_id,qty FROM order_items WHERE order_id=?').all(x.id).forEach(i=>db.prepare('UPDATE products SET stock=stock+? WHERE id=?').run(i.qty,i.product_id))})}catch(e){console.error('failStale',e.message)}};
+setInterval(failStale,60000);failStale();
 let lastExp=0;app.use((req,res,next)=>{const n=Date.now();if(n-lastExp>20000){lastExp=n;try{db.prepare("UPDATE products SET discount=0,daily_deal=0,deal_ends='' WHERE deal_ends<>'' AND deal_ends<?").run(new Date().toISOString())}catch(e){}}next()});
 // ---------- storefront
 app.get('/',(req,res)=>{
@@ -83,24 +86,34 @@ app.get('/',(req,res)=>{
     featured:productsQ('AND featured=1',[],'created DESC',8),
     latest:productsQ('',[],'created DESC',8)});
 });
-app.get('/shop',(req,res)=>{
-  const q=(req.query.q||'').trim(), sort=req.query.sort; let where='',args=[];
+const shopFilter=req=>{const Q=req.query,q=(Q.q||'').trim();let where='',args=[];
   if(q){where+=' AND (p.name LIKE ? OR p.brand LIKE ? OR p.brief LIKE ?)';args.push(...Array(3).fill(`%${q}%`));}
-  if(req.query.deals){where+=' AND p.discount>0';}
-  const order={cheap:'price*(100-discount) ASC',exp:'price*(100-discount) DESC',off:'discount DESC'}[sort]||'p.created DESC';
+  if(Q.deals)where+=' AND p.discount>0';
+  if(Q.stock)where+=' AND p.stock>0';
+  if(Q.brand){where+=' AND p.brand=?';args.push(String(Q.brand));}
+  if(+Q.cat){where+=' AND p.category_id IN (SELECT ? UNION SELECT id FROM categories WHERE parent_id=?)';args.push(+Q.cat,+Q.cat);}
+  const mn=Math.floor(+String(Q.min||'').replace(/[^\d]/g,'')),mx=Math.floor(+String(Q.max||'').replace(/[^\d]/g,''));
+  if(mn>0){where+=' AND p.price*(100-p.discount)/100>=?';args.push(mn);}
+  if(mx>0){where+=' AND p.price*(100-p.discount)/100<=?';args.push(mx);}
+  return{where,args,q,f:{brand:Q.brand||'',cat:+Q.cat||0,min:mn>0?mn:'',max:mx>0?mx:'',stock:!!Q.stock,deals:!!Q.deals}};};
+const ORD={cheap:'price*(100-discount) ASC',exp:'price*(100-discount) DESC',off:'discount DESC'};
+const brandsList=()=>db.prepare("SELECT DISTINCT brand FROM products WHERE active=1 AND brand<>'' ORDER BY brand").all().map(x=>x.brand);
+app.get('/shop',(req,res)=>{
+  const F=shopFilter(req),q=F.q,sort=req.query.sort;
   res.locals.meta.title=(q?`جستجوی ${q}`:'همه محصولات')+' | VELORA';
-  res.render('shop',{title:q?`نتایج «${q}»`:req.query.deals?'تخفیف‌ها':'همه محصولات',products:productsQ(where,args,order),category:null,q,sort});
+  res.render('shop',{title:q?`نتایج «${q}»`:req.query.deals?'تخفیف‌ها':'همه محصولات',products:productsQ(F.where,F.args,ORD[sort]||'p.created DESC'),category:null,q,sort,f:F.f,brands:brandsList(),fcats:db.prepare('SELECT id,name FROM categories ORDER BY sort,id').all()});
 });
 app.get('/category/:slug',(req,res)=>{
   const c=db.prepare('SELECT * FROM categories WHERE slug=?').get(req.params.slug); if(!c) return res.status(404).render('404');
-  const order={cheap:'price*(100-discount) ASC',exp:'price*(100-discount) DESC',off:'discount DESC'}[req.query.sort]||'p.created DESC';
+  const F=shopFilter(req);
   res.locals.meta.title=`خرید ${c.name} | VELORA`; res.locals.meta.desc=`بهترین‌های ${c.name} با قیمت مناسب و ضمانت اصالت در VELORA`;
-  res.render('shop',{title:c.name,products:productsQ(`AND category_id IN (SELECT ? UNION SELECT id FROM categories WHERE parent_id=?)`,[c.id,c.id],order),category:c,subs:db.prepare('SELECT * FROM categories WHERE parent_id=? ORDER BY sort,id').all(c.id),parent:c.parent_id?db.prepare('SELECT * FROM categories WHERE id=?').get(c.parent_id):null,q:'',sort:req.query.sort});
+  res.render('shop',{title:c.name,products:productsQ(`AND category_id IN (SELECT ? UNION SELECT id FROM categories WHERE parent_id=?)`+F.where,[c.id,c.id,...F.args],ORD[req.query.sort]||'p.created DESC'),category:c,subs:db.prepare('SELECT * FROM categories WHERE parent_id=? ORDER BY sort,id').all(c.id),parent:c.parent_id?db.prepare('SELECT * FROM categories WHERE id=?').get(c.parent_id):null,q:F.q,sort:req.query.sort,f:F.f,brands:brandsList(),fcats:null});
 });
 app.get('/product/:slug',(req,res)=>{
   const p=productsQ('AND p.slug=?',[req.params.slug],'1',1)[0]; if(!p) return res.status(404).render('404');
   db.prepare('UPDATE products SET views=views+1 WHERE id=?').run(p.id);
-  const similar=productsQ('AND category_id=? AND p.id!=?',[p.category_id,p.id],'RANDOM()',4);
+  let similar=p.category_id?productsQ('AND category_id=? AND p.id!=?',[p.category_id,p.id],'RANDOM()',8):[];
+  if(similar.length<4){const have=[p.id,...similar.map(x=>x.id)];similar=similar.concat(productsQ(`AND p.id NOT IN (${have.map(()=>'?').join(',')})`+(p.brand?' AND p.brand=?':''),p.brand?[...have,p.brand]:have,'RANDOM()',8-similar.length));}
   const images=[p.image,...db.prepare('SELECT path FROM product_images WHERE product_id=? ORDER BY sort,id').all(p.id).map(x=>x.path)].filter(Boolean);
   const reviews=db.prepare('SELECT * FROM reviews WHERE product_id=? AND approved=1 ORDER BY id DESC').all(p.id);
   const avg=reviews.length?reviews.reduce((a,r)=>a+r.rating,0)/reviews.length:0;
@@ -137,8 +150,9 @@ const cartItems=req=>{const ids=Object.keys(req.session.cart).map(Number).filter
   const sub=items.reduce((a,i)=>a+i.price*i.qty,0);return{items,sub,...couponCalc(req,sub)};};
 const isCollect=(S,items)=>S.ship_collect==='1'||(items&&items.length>0&&items.every(i=>i.p.ship_collect));
 const shipping=(S,sub,m,items)=>isCollect(S,items)||sub===0||sub>=+S.free_shipping?0:(m==='tipax'?+(S.tipax_fee||S.shipping_fee):+S.shipping_fee);
+const packFee=(S,sub)=>sub>0?Math.max(0,Math.floor(+S.pack_fee||0)):0;
 const METHODS={pishtaz:'پست پیشتاز',tipax:'تیپاکس'};
-app.get('/cart',(req,res)=>{const c=cartItems(req);res.render('cart',{...c,collect:isCollect(res.locals.S,c.items),ship:shipping(res.locals.S,c.sub-c.off,'',c.items)});});
+app.get('/cart',(req,res)=>{const c=cartItems(req);res.render('cart',{...c,pack:packFee(res.locals.S,c.sub-c.off),collect:isCollect(res.locals.S,c.items),ship:shipping(res.locals.S,c.sub-c.off,'',c.items)});});
 app.post('/cart/add',(req,res)=>{const id=+req.body.id,q=Math.min(20,Math.max(1,+req.body.qty||1));
   if(!db.prepare('SELECT 1 FROM products WHERE id=? AND active=1').get(id)) return res.status(404).json({});
   req.session.cart[id]=Math.min(50,(req.session.cart[id]||0)+q);
@@ -153,15 +167,15 @@ app.post('/cart/coupon',(req,res)=>{const code=String(req.body.code||'').trim().
 const profileOk=u=>u&&u.first_name&&u.last_name&&db.prepare("SELECT 1 FROM addresses WHERE user_id=? AND postal_code<>'' AND address<>''").get(u.id);
 app.get('/checkout',(req,res)=>{if(!req.session.userId){req.session.next='/checkout';return res.redirect('/login');}
   if(!profileOk(res.locals.user)){req.session.flash='برای ثبت سفارش ابتدا اطلاعات خود را تکمیل کنید';return res.redirect('/account/complete?next=/checkout');}
-  const c=cartItems(req);if(!c.items.length)return res.redirect('/cart');res.render('checkout',{...c,addrs:addrs(req.session.userId),collect:isCollect(res.locals.S,c.items),ship:shipping(res.locals.S,c.sub-c.off,'',c.items),shipT:shipping(res.locals.S,c.sub-c.off,'tipax',c.items),shipP:shipping(res.locals.S,c.sub-c.off,'pishtaz',c.items)});});
+  const c=cartItems(req);if(!c.items.length)return res.redirect('/cart');res.render('checkout',{...c,pack:packFee(res.locals.S,c.sub-c.off),addrs:addrs(req.session.userId),collect:isCollect(res.locals.S,c.items),ship:shipping(res.locals.S,c.sub-c.off,'',c.items),shipT:shipping(res.locals.S,c.sub-c.off,'tipax',c.items),shipP:shipping(res.locals.S,c.sub-c.off,'pishtaz',c.items)});});
 app.post('/checkout',(req,res)=>{
   if(!req.session.userId) return res.redirect('/login'); if(!profileOk(res.locals.user)) return res.redirect('/account/complete?next=/checkout'); const c=cartItems(req); if(!c.items.length) return res.redirect('/cart');
   const b=req.body,cl=(x,n=500)=>String(x||'').trim().slice(0,n),fd=x=>String(x||'').replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d));
   const method=METHODS[b.ship_method]?b.ship_method:'pishtaz',postal=fd(b.postal_code).replace(/\D/g,''),phone=fd(b.phone).replace(/\D/g,'');
   const bad=!cl(b.name)||!/^09\d{9}$/.test(phone)||!/^\d{10}$/.test(postal)||!cl(b.province)||!cl(b.city)||!cl(b.address);
   if(bad){req.session.flash='لطفاً نام، موبایل (۰۹…)، استان، شهر، کد پستی ۱۰ رقمی و آدرس را درست وارد کنید';return res.redirect('/checkout');}
-  const ship=shipping(res.locals.S,c.sub-c.off,method,c.items),col=isCollect(res.locals.S,c.items)?1:0,total=c.sub-c.off+ship;
-  const r=db.prepare('INSERT INTO orders(user_id,total,name,phone,address,note,coupon,discount_amount,province,city,postal_code,ship_method,ship_cost,ship_collect) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(req.session.userId,total,cl(b.name,100),phone,cl(b.address),cl(b.note),c.code,c.off,cl(b.province,50),cl(b.city,50),postal,method,ship,col);
+  const ship=shipping(res.locals.S,c.sub-c.off,method,c.items),col=isCollect(res.locals.S,c.items)?1:0,pk=packFee(res.locals.S,c.sub-c.off),total=c.sub-c.off+ship+pk;
+  const r=db.prepare('INSERT INTO orders(user_id,total,name,phone,address,note,coupon,discount_amount,province,city,postal_code,ship_method,ship_cost,ship_collect,pack_cost) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(req.session.userId,total,cl(b.name,100),phone,cl(b.address),cl(b.note),c.code,c.off,cl(b.province,50),cl(b.city,50),postal,method,ship,col,pk);
   if(c.code)db.prepare('UPDATE coupons SET used=used+1 WHERE code=?').run(c.code);
   const ins=db.prepare('INSERT INTO order_items(order_id,product_id,name,price,qty) VALUES(?,?,?,?,?)');
   c.items.forEach(i=>{ins.run(r.lastInsertRowid,i.p.id,i.p.name,i.price,i.qty);db.prepare('UPDATE products SET stock=MAX(0,stock-?) WHERE id=?').run(i.qty,i.p.id);});
@@ -277,6 +291,9 @@ app.get('/sitemap.xml',(req,res)=>{
   res.type('xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${u.map(x=>`<url><loc>${SITE}${x}</loc></url>`).join('')}</urlset>`);});
 
 // ---------- admin
+const salesDays=()=>{const fmt=new Intl.DateTimeFormat('fa-IR-u-ca-persian',{day:'numeric',month:'long',timeZone:'Asia/Tehran'}),iso=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tehran'});
+  const rows=db.prepare("SELECT date(created,'+210 minutes') d,SUM(total) s,COUNT(*) n FROM orders WHERE status IN ('paid','shipped','done') AND created>=datetime('now','-9 day') GROUP BY d").all(),m=Object.fromEntries(rows.map(r=>[r.d,r]));
+  const out=[];for(let i=6;i>=0;i--){const dt=new Date(Date.now()-i*864e5),k=iso.format(dt),r=m[k];out.push({d:fmt.format(dt),s:r?r.s:0,n:r?r.n:0})}return out};
 const A=express.Router();
 A.get('/login',(req,res)=>res.render("admin/login"));
 A.post('/login',limiter(8,15,'تلاش ورود بیش از حد. ۱۵ دقیقه صبر کنید.'),(req,res)=>{const a=db.prepare('SELECT * FROM admins WHERE username=?').get(req.body.username||'');
@@ -288,7 +305,7 @@ A.use((req,res,next)=>req.session.adminId?next():res.redirect(ADM+'/login'));
 const flash=(req,m)=>req.session.flash=m;
 A.get('/',(req,res)=>{const n=t=>db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
   res.render('admin/dashboard',{stats:{products:n('products'),orders:n('orders'),users:n('users'),cats:n('categories'),revenue:db.prepare("SELECT COALESCE(SUM(total),0) s FROM orders WHERE status IN ('paid','shipped','done')").get().s},
-   recent:db.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT 5').all(),low:db.prepare('SELECT * FROM products WHERE stock<=3 AND active=1').all(),top:db.prepare('SELECT name,views FROM products ORDER BY views DESC LIMIT 5').all(),days:db.prepare("SELECT substr(created,1,10) d,SUM(total) s FROM orders GROUP BY d ORDER BY d DESC LIMIT 7").all().reverse()});});
+   recent:db.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT 5').all(),low:db.prepare('SELECT * FROM products WHERE stock<=3 AND active=1').all(),top:db.prepare('SELECT name,views FROM products ORDER BY views DESC LIMIT 5').all(),days:salesDays()});});
 // products
 A.get('/products',(req,res)=>res.render('admin/products',{rows:db.prepare('SELECT p.*,COALESCE(pc.name,c.name) cat,CASE WHEN pc.id IS NOT NULL THEN c.name ELSE \'\' END subcat FROM products p LEFT JOIN categories c ON c.id=p.category_id LEFT JOIN categories pc ON pc.id=c.parent_id ORDER BY p.id DESC').all()}));
 A.get('/products/new',(req,res)=>res.render('admin/product_form',{p:{price:0,discount:0,stock:10},gallery:[]}));
@@ -345,11 +362,20 @@ A.post('/banners/:id/delete',(req,res)=>{db.prepare('DELETE FROM banners WHERE i
 A.get('/orders',(req,res)=>{const st=req.query.status||'';const rows=st?db.prepare('SELECT * FROM orders WHERE status=? ORDER BY id DESC').all(st):db.prepare('SELECT * FROM orders ORDER BY id DESC').all();const cnt=Object.fromEntries(db.prepare('SELECT status,COUNT(*) c FROM orders GROUP BY status').all().map(r=>[r.status,r.c]));res.render('admin/orders',{rows,st,cnt});});
 A.get('/orders/:id',(req,res)=>{const o=db.prepare('SELECT * FROM orders WHERE id=?').get(+req.params.id);res.render('admin/order',{o,items:db.prepare('SELECT * FROM order_items WHERE order_id=?').all(o.id)});});
 A.post('/orders/:id/status',(req,res)=>{db.prepare('UPDATE orders SET status=? WHERE id=?').run(req.body.status,+req.params.id);res.redirect(ADM+'/orders/'+req.params.id);});
-A.get('/carts',(req,res)=>{db.prepare("DELETE FROM carts WHERE updated<datetime('now','-30 day')").run();
-  const rows=db.prepare('SELECT c.*,u.first_name,u.last_name,u.phone,u.email FROM carts c LEFT JOIN users u ON u.id=c.user_id ORDER BY c.updated DESC').all().map(r=>{const d=JSON.parse(r.data||'{}'),ids=Object.keys(d).map(Number).filter(Boolean);
+const CART_TTL=86400;
+A.get('/carts',(req,res)=>{db.prepare("DELETE FROM carts WHERE updated<datetime('now','-1 day')").run();
+  const rows=db.prepare("SELECT c.*,u.first_name,u.last_name,u.phone,u.email,CAST(strftime('%s',c.updated)AS INTEGER)+? - CAST(strftime('%s','now')AS INTEGER) AS secs FROM carts c LEFT JOIN users u ON u.id=c.user_id ORDER BY c.updated DESC").all(CART_TTL).map(r=>{const d=JSON.parse(r.data||'{}'),ids=Object.keys(d).map(Number).filter(Boolean);
     const ps=ids.length?db.prepare(`SELECT id,name,price,discount FROM products WHERE id IN (${ids.map(()=>'?').join(',')})`).all(...ids):[];
-    const items=ps.map(p=>({name:p.name,qty:d[p.id],price:finalPrice(p)}));return{...r,items,total:items.reduce((a,i)=>a+i.price*i.qty,0)}}).filter(r=>r.items.length);
+    const items=ps.map(p=>({id:p.id,name:p.name,qty:d[p.id],price:finalPrice(p)}));return{...r,left:Math.max(0,r.secs),items,total:items.reduce((a,i)=>a+i.price*i.qty,0)}}).filter(r=>r.items.length);
   res.render('admin/carts',{rows});});
+// manual removal from a customer's cart (also purges the live session copy so it is not re-saved)
+const dropFromSessions=(uid,pid)=>{try{db.prepare('SELECT sid,data FROM sessions').all().forEach(r=>{let d;try{d=JSON.parse(r.data)}catch(e){return}
+  if(!d||d.userId!==uid||!d.cart)return;if(pid)delete d.cart[pid];else d.cart={};db.prepare('UPDATE sessions SET data=? WHERE sid=?').run(JSON.stringify(d),r.sid)})}catch(e){}};
+A.post('/carts/remove',upload.none(),(req,res)=>{const o=String(req.body.owner||''),pid=+req.body.pid||0;const r=db.prepare('SELECT data FROM carts WHERE owner=?').get(o);
+  if(r&&pid){const d=JSON.parse(r.data||'{}');delete d[pid];if(Object.keys(d).length)db.prepare("UPDATE carts SET data=? WHERE owner=?").run(JSON.stringify(d),o);else db.prepare('DELETE FROM carts WHERE owner=?').run(o);
+    if(o.startsWith('u:'))dropFromSessions(+o.slice(2),pid);audit(req,'cart remove item '+pid+' from '+o.slice(0,12));flash(req,'محصول از سبد حذف شد');}
+  res.redirect(ADM+'/carts');});
+A.post('/carts/clear',upload.none(),(req,res)=>{const o=String(req.body.owner||'');db.prepare('DELETE FROM carts WHERE owner=?').run(o);if(o.startsWith('u:'))dropFromSessions(+o.slice(2),0);audit(req,'cart clear '+o.slice(0,12));flash(req,'سبد حذف شد');res.redirect(ADM+'/carts');});
 A.get('/users',(req,res)=>res.render('admin/users',{rows:db.prepare('SELECT u.*,(SELECT COUNT(*) FROM orders WHERE user_id=u.id) n FROM users u ORDER BY id DESC').all()}));
 // settings (store/seller info + SEO)
 A.get('/settings',(req,res)=>res.render('admin/settings',{smsLog:db.prepare('SELECT * FROM sms_log ORDER BY id DESC LIMIT 5').all(),smsStat:db.prepare('SELECT COUNT(*) n,COALESCE(SUM(ok),0) ok FROM sms_log').get()}));
@@ -371,9 +397,31 @@ A.post('/reviews/:id/toggle',(req,res)=>{db.prepare('UPDATE reviews SET approved
 A.post('/reviews/:id/delete',(req,res)=>{db.prepare('DELETE FROM reviews WHERE id=?').run(+req.params.id);res.redirect(ADM+'/reviews');});
 A.post('/users/:id/delete',(req,res)=>{const id=+req.params.id;db.prepare('DELETE FROM addresses WHERE user_id=?').run(id);db.prepare('DELETE FROM users WHERE id=?').run(id);audit(req,'delete user '+id);flash(req,'کاربر حذف شد');res.redirect(ADM+'/users');});
 A.post('/users/:id/block',(req,res)=>{db.prepare('UPDATE users SET blocked=1-blocked WHERE id=?').run(+req.params.id);audit(req,'toggle block user '+req.params.id);res.redirect(ADM+'/users');});
-A.get('/audit',(req,res)=>res.render('admin/audit',{rows:db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT 200').all()}));
+A.get('/audit',(req,res)=>{const q=String(req.query.q||'').trim().slice(0,60),t=req.query.t==='fail'?'fail':req.query.t==='ok'?'ok':'';
+  let w=[],a=[];if(q){w.push('(who LIKE ? OR action LIKE ? OR ip LIKE ? OR created LIKE ?)');a.push(...Array(4).fill('%'+q+'%'));}
+  if(t==='fail')w.push("action LIKE '%FAIL%'");if(t==='ok')w.push("action NOT LIKE '%FAIL%'");
+  const rows=db.prepare('SELECT * FROM audit'+(w.length?' WHERE '+w.join(' AND '):'')+' ORDER BY id DESC LIMIT 500').all(...a);
+  const st=db.prepare("SELECT COUNT(*) n,COALESCE(SUM(action LIKE '%FAIL%'),0) f FROM audit").get();
+  res.render('admin/audit',{rows,q,t,st});});
+// sms panel
+A.get('/sms',(req,res)=>res.render('admin/sms',{users:db.prepare("SELECT id,phone,first_name,last_name,blocked FROM users WHERE phone<>'' ORDER BY id DESC").all(),log:db.prepare("SELECT * FROM sms_log WHERE kind='manual' ORDER BY id DESC LIMIT 15").all(),hasKey:!!getSettings().sms_key,line:getSettings().sms_line||''}));
+A.post('/sms/send',upload.none(),async(req,res)=>{const b=req.body,S=getSettings(),msg=String(b.message||'').trim().slice(0,500);
+  let ids=[].concat(b.ids||[]).map(Number).filter(Boolean);
+  if(b.all)ids=db.prepare("SELECT id FROM users WHERE blocked=0").all().map(x=>x.id);
+  const ph=ids.length?db.prepare(`SELECT phone FROM users WHERE phone<>'' AND id IN (${ids.map(()=>'?').join(',')})`).all(...ids).map(x=>normPhone(x.phone)).filter(Boolean):[];
+  const line=String(b.line||S.sms_line||'').replace(/\D/g,'');
+  if(b.line&&line)db.prepare('INSERT OR REPLACE INTO settings VALUES(?,?)').run('sms_line',line);
+  if(!S.sms_key){flash(req,'ابتدا کلید API پیامک را در تنظیمات وارد کنید');return res.redirect(ADM+'/sms');}
+  if(!msg||!ph.length||!line){flash(req,!line?'شماره خط ارسال را وارد کنید':!msg?'متن پیام خالی است':'گیرنده‌ای انتخاب نشده');return res.redirect(ADM+'/sms');}
+  let ok=0,fail=0,err='';
+  for(let i=0;i<ph.length;i+=100){const chunk=ph.slice(i,i+100);
+    try{const r=await fetch('https://api.sms.ir/v1/send/bulk',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json','x-api-key':S.sms_key},body:JSON.stringify({lineNumber:+line,messageText:msg,mobiles:chunk}),signal:AbortSignal.timeout(15000)});
+      const j=await r.json().catch(()=>({}));const good=r.ok&&j.status===1;chunk.forEach(p=>smsRec(p,'manual',good,j.message||('HTTP '+r.status)));if(good)ok+=chunk.length;else{fail+=chunk.length;err=j.message||('HTTP '+r.status)}}
+    catch(e){fail+=chunk.length;err=e.message;chunk.forEach(p=>smsRec(p,'manual',false,e.message))}}
+  audit(req,'sms manual ok='+ok+' fail='+fail);
+  flash(req,fail?`ارسال: ${ok} موفق، ${fail} ناموفق (${err})`:`پیامک برای ${ok} نفر ارسال شد`);res.redirect(ADM+'/sms');});
 A.get('/payment',(req,res)=>res.render('admin/payment'));
-app.use(ADM,(req,res,next)=>{res.locals.ST={pending_payment:['در انتظار پرداخت','warn'],paid:['پرداخت‌شده','ok'],shipped:['ارسال‌شده','info'],done:['تحویل‌شده','ok'],canceled:['لغوشده','bad']};res.locals.fd=d=>{try{return new Date(String(d).replace(' ','T')+'Z').toLocaleDateString('fa-IR')}catch(e){return d}};res.locals.ap=req.originalUrl.split('?')[0];res.locals.badge={orders:db.prepare("SELECT COUNT(*) c FROM orders WHERE status='pending_payment'").get().c,low:db.prepare('SELECT COUNT(*) c FROM products WHERE stock<=3 AND active=1').get().c};res.locals.admin=db.prepare('SELECT * FROM admins WHERE id=?').get(req.session.adminId||0);next();},A);
+app.use(ADM,(req,res,next)=>{res.locals.ST={pending_payment:['در انتظار پرداخت','warn'],paid:['پرداخت‌شده','ok'],shipped:['ارسال‌شده','info'],done:['تحویل‌شده','ok'],canceled:['لغوشده','bad'],failed:['پرداخت ناموفق','bad']};res.locals.fd=d=>{try{return new Date(String(d).replace(' ','T')+'Z').toLocaleDateString('fa-IR')}catch(e){return d}};res.locals.ap=req.originalUrl.split('?')[0];res.locals.badge={orders:db.prepare("SELECT COUNT(*) c FROM orders WHERE status='pending_payment'").get().c,low:db.prepare('SELECT COUNT(*) c FROM products WHERE stock<=3 AND active=1').get().c};res.locals.admin=db.prepare('SELECT * FROM admins WHERE id=?').get(req.session.adminId||0);next();},A);
 app.use((req,res)=>res.status(404).render('404'));
-app.use((e,req,res,next)=>{console.error(e.message);res.status(e.code==='LIMIT_FILE_SIZE'?413:500).send(e.code==='LIMIT_FILE_SIZE'?'حجم فایل زیاد است':'خطای سرور');});
+app.use((e,req,res,next)=>{console.error(e.stack||e.message);res.status(e.code==='LIMIT_FILE_SIZE'?413:500).send(e.code==='LIMIT_FILE_SIZE'?'حجم فایل زیاد است':'خطای سرور');});
 app.listen(PORT,()=>console.log('VELORA on '+SITE));

@@ -10,6 +10,7 @@
 <% if(p.daily_deal && p.deal_ends){ %><p>⏳ پایان تخفیف: <span class="timer" data-end="<%= p.deal_ends %>"></span></p><% } %>
 <% if(p.stock>0){ %><form class="addcart" method="post" action="/cart/add?_csrf=<%= csrf %>"><input type="hidden" name="id" value="<%= p.id %>"><div style="display:flex;gap:12px;margin:18px 0;flex-wrap:wrap"><div class="qty"><button type="button">+</button><input name="qty" value="1" min="1" max="<%= p.stock %>" readonly><button type="button">−</button></div><button class="btn lg" style="flex:1"><%- ic('bag') %> افزودن به سبد خرید</button></div></form>
 <% if(p.stock<=5){ %><p style="color:var(--red)"><%- ic('fire') %> فقط <%= fa(p.stock) %> عدد باقی مانده!</p><% } %><% }else{ %><p style="color:var(--red)">ناموجود</p><% } %>
+<div class="pdtrust"><span><%- ic('shield') %> ضمانت اصالت</span><span><%- ic('truck') %> ارسال سریع</span><span><%- ic('gift') %> بسته‌بندی هدیه</span></div>
 <% if(p.features){ %><ul class="feat"><% p.features.split('\n').filter(Boolean).forEach(f=>{ %><li><%= f %></li><% }) %></ul><% } %></div></div>
 <div class="tabs"><nav><button class="on" data-t="t1">توضیحات کامل</button><button data-t="t2">نحوه استفاده</button><button data-t="t3">مواد تشکیل‌دهنده</button><button data-t="t4" id="reviews">نظرات (<%= fa(reviews.length) %>)</button></nav>
 <div class="pane on" id="t1"><%= p.description||'—' %></div><div class="pane" id="t2"><%= p.how_to_use||'—' %></div><div class="pane" id="t3"><%= p.ingredients||'—' %></div>

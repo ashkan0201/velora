@@ -96,8 +96,13 @@ document.querySelectorAll('.hscroll').forEach(el=>{
   const w=document.createElement('div');w.className='hs-w';el.parentNode.insertBefore(w,el);w.appendChild(el);
   const mk=(c,t)=>{const b=document.createElement('button');b.type='button';b.className='hs-b '+c;b.setAttribute('aria-label',t);b.innerHTML=c==='nx'?'›':'‹';w.appendChild(b);return b};
   const nx=mk('nx','بعدی'),pv=mk('pv','قبلی');
+  // endless loop for .deals rows: clone cards so the row never ends
+  let loopW=0;
+  if(el.closest('.deals')){const orig=[...el.children];if(orig.length){el.classList.remove('few');el.classList.add('loop');
+    let g=0;do{orig.forEach(c=>{const k=c.cloneNode(true);k.setAttribute('aria-hidden','true');k.classList.add('in');k.style.transitionDelay='0s';k.style.opacity=1;k.querySelectorAll('a,button,input').forEach(x=>x.tabIndex=-1);el.appendChild(k)});g++}while(el.scrollWidth<el.clientWidth*2+400&&g<8);
+    const calc=()=>{const c=el.children[orig.length];loopW=c?Math.abs(c.offsetLeft-orig[0].offsetLeft):0};calc();addEventListener('resize',calc);setTimeout(calc,500);}}
   const step=()=>Math.max(240,el.clientWidth*.8);
-  const upd=()=>{const max=el.scrollWidth-el.clientWidth-2,x=Math.abs(el.scrollLeft);
+  const upd=()=>{if(loopW){w.classList.add('ov');pv.classList.remove('off');nx.classList.remove('off');const xx=Math.abs(el.scrollLeft);if(xx>=loopW*2-el.clientWidth)el.scrollLeft-=dir*loopW;return}const max=el.scrollWidth-el.clientWidth-2,x=Math.abs(el.scrollLeft);
     w.classList.toggle('ov',max>4);pv.classList.toggle('off',x<=2);nx.classList.toggle('off',x>=max)};
   // RTL: scrollLeft is negative; "next" = further left (negative)
   const dir=getComputedStyle(el).direction==='rtl'?-1:1;
@@ -119,6 +124,7 @@ document.querySelectorAll('.hscroll').forEach(el=>{
     const max=el.scrollWidth-el.clientWidth-2;if(max<=4||paused||!vis||document.hidden||el.classList.contains('drag'))return;
     acc+=dt*0.035;if(acc<1)return;const px=Math.floor(acc);acc-=px;
     const x=Math.abs(el.scrollLeft);
+    if(loopW){el.style.scrollSnapType='none';if(x>=loopW)el.scrollLeft-=dir*loopW;el.scrollLeft+=dir*px;return}
     if(x>=max-1){paused=true;setTimeout(()=>{el.scrollTo({left:0,behavior:'smooth'});setTimeout(()=>paused=false,1500)},1200);return}
     el.style.scrollSnapType='none';el.scrollLeft+=dir*px};
   requestAnimationFrame(tick);

@@ -58,6 +58,7 @@ addCol('users','password',"TEXT DEFAULT ''");
 for(const c of ['receiver','receiver_phone','province','city','postal_code'])addCol('addresses',c,"TEXT DEFAULT ''");
 for(const c of ['province','city','postal_code','ship_method'])addCol('orders',c,"TEXT DEFAULT ''");addCol('banners','icon',"TEXT DEFAULT ''");addCol('orders','ship_cost','INTEGER DEFAULT 0');addCol('orders','ship_collect','INTEGER DEFAULT 0');addCol('products','ship_collect','INTEGER DEFAULT 0');
 db.prepare("INSERT OR IGNORE INTO settings VALUES('tipax_fee','90000')").run();
+db.prepare("INSERT OR IGNORE INTO settings VALUES('pack_fee','0')").run();addCol('orders','pack_cost','INTEGER DEFAULT 0');
 for (const [k,v] of Object.entries({hero_title:'زیبایی تو، امضای ما',hero_sub:'برترین برندهای آرایشی و بهداشتی اصل، با ضمانت اصالت و ارسال سریع'})) db.prepare('INSERT OR IGNORE INTO settings VALUES(?,?)').run(k,v);
 module.exports = db;
 

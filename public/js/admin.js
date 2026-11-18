@@ -67,3 +67,7 @@ const rel=G('jrel');if(rel){const setRel=v=>{if(![...rel.options].some(o=>o.valu
 };jalaliInit('');jalaliInit('b');
 (()=>{const dc=document.querySelector('[name=discount]'),bx=document.getElementById('dealbox');if(dc&&bx){const t=()=>{bx.style.display=(+dc.value>0)?'':'none'};dc.addEventListener('input',t);t()}})();
 })();
+// mobile drawer
+(()=>{const b=document.getElementById('burger'),sc=document.getElementById('scrim'),d=document.body;if(!b)return;const t=v=>d.classList.toggle('navopen',v);
+b.addEventListener('click',()=>t());sc.addEventListener('click',()=>t(false));document.querySelectorAll('.adm aside a').forEach(a=>a.addEventListener('click',()=>t(false)));
+addEventListener('keydown',e=>{if(e.key==='Escape')t(false)})})();

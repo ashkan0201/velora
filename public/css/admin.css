@@ -96,3 +96,71 @@ td .subtag{display:block;width:max-content}
 .bulk .bp{position:absolute;left:0;top:46px;z-index:30;width:340px;box-shadow:var(--sh);display:grid;gap:14px;padding:18px}.bulk .bp label{margin:0 0 6px;display:block}.bulk .bp>div{min-width:0}.bulk .bp .btn{width:100%;margin-top:4px}.bulk .bp .help{margin:0}.bulk .bp select,.bulk .bp input{width:100%;min-width:0}
 .tools{position:relative}.bulk{position:static}.bulk .bp{left:auto;right:0;top:calc(100% + 8px);max-width:calc(100vw - 32px);max-height:75vh;overflow:auto}
 .dealbox{margin-top:14px;padding:14px;border:1px dashed var(--line);border-radius:14px}.dealbox>label{margin-top:0}.exact{margin-top:10px}.exact summary{cursor:pointer;font-size:13px;color:var(--gold);font-weight:700;margin-bottom:8px}
+
+.smsrow{display:flex;gap:16px;margin-top:18px;flex-wrap:wrap;align-items:flex-start}
+.smsrow>.card{flex:1 1 320px;min-width:280px;max-width:560px}
+
+.smsgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}@media(max-width:900px){.smsgrid{grid-template-columns:1fr}}
+.rcpt{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px}.rcpt label{display:flex;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;margin:0}.rcpt label small{color:var(--mut);margin-inline-start:auto}
+.guide{line-height:2}.guide li{margin-bottom:6px}.guide code{background:var(--line);padding:1px 6px;border-radius:6px}
+
+/* ===== admin responsive: off-canvas drawer ===== */
+.scrim{display:none}
+@media(max-width:1000px){
+  .adm .burger,.burger{display:grid!important}
+  .adm aside{position:fixed!important;top:0;bottom:0;right:0;width:270px;max-width:84vw;height:100vh!important;overflow-y:auto!important;transform:translateX(100%)!important;transition:transform .3s;z-index:200;box-shadow:-10px 0 40px #0006}
+  body.navopen .adm aside{transform:none!important}
+  .scrim{display:block;position:fixed;inset:0;background:#0008;opacity:0;pointer-events:none;transition:.3s;z-index:190}
+  body.navopen .scrim{opacity:1;pointer-events:auto}
+  body.navopen{overflow:hidden}
+  .topbar{position:sticky;top:0;z-index:60;gap:10px}
+  .topbar h1{font-size:17px}.topbar .sub{display:none}
+  .adm main{padding:14px 12px 90px}
+  .tools,.tools form{flex-wrap:wrap}.tools .sbox{flex:1 1 100%}
+  .tbl .scr table{min-width:620px}
+  .cards,.stats2,.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:520px){.cards,.stats2,.kpis{grid-template-columns:1fr!important}.topbar .btn.sm{padding:6px 10px;font-size:12px}}
+
+/* coupons */
+.cpgrid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:1000px){
+  .cpgrid{grid-template-columns:minmax(0,1fr)!important}
+  .cpt{min-width:0!important}.tbl .scr table.cpt{min-width:0}
+  .cpt thead{display:none}.cpt,.cpt tbody,.cpt tr,.cpt td{display:block;width:100%;box-sizing:border-box}
+  .cpt tr{border:1px solid var(--line);border-radius:14px;margin:10px;padding:6px 12px;width:auto;background:var(--card)}
+  .cpt td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0!important;border:0!important;border-bottom:1px dashed var(--line)!important;text-align:left}
+  .cpt td:last-child{border-bottom:0!important}
+  .cpt td[data-l]:before{content:attr(data-l);color:var(--mut);font-size:12px;flex:none}
+  .cpt td small{text-align:left}
+  .cpt .acts2{display:flex;gap:10px;justify-content:flex-end;width:100%}
+}
+
+/* desktop: no burger, sidebar always full height */
+@media(min-width:1001px){.burger,.adm .burger{display:none!important}.scrim{display:none!important}}
+.adm{align-items:stretch}
+.adm aside{align-self:start;min-height:100vh}
+@media(min-width:1001px){.adm aside{position:sticky;top:0;height:100vh;align-self:start}}
+/* sidebar rail runs the full page height even on long pages */
+.adm{position:relative}
+@media(min-width:1001px){.adm:before{content:"";position:absolute;top:0;bottom:0;right:0;width:268px;background:var(--dk);z-index:0}.adm aside{position:sticky;z-index:70}}
+.ci{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 0}.ci form{margin:0;flex:none}.ci .ib{width:28px;height:28px}
+
+/* sidebar: scrolls ONLY when content is taller than the viewport */
+@media(min-width:1001px){
+  .adm aside{box-sizing:border-box;height:100vh;height:100dvh;min-height:0!important;max-height:100vh;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#ffffff33 transparent}
+  .adm aside::-webkit-scrollbar{width:6px}.adm aside::-webkit-scrollbar-thumb{background:#ffffff33;border-radius:6px}
+  .adm aside .me{margin-top:auto}
+}
+.bars small{white-space:nowrap;font-size:10px;left:-10px;right:-10px}
+
+/* ===== FINAL sidebar: rail = full page height; inner content sticky, scrolls only if taller than viewport ===== */
+@media(min-width:1001px){
+  .adm:before{display:none!important}
+  .adm{align-items:stretch}
+  .adm aside{position:relative!important;top:auto!important;height:auto!important;max-height:none!important;min-height:100vh;align-self:stretch;overflow:visible!important;display:block!important;padding:0!important}
+  .adm aside .asin{position:sticky;top:0;box-sizing:border-box;max-height:100vh;max-height:100dvh;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:2px;padding:18px 14px 24px;min-height:min(100vh,100%);scrollbar-width:thin;scrollbar-color:#ffffff33 transparent}
+  .adm aside .asin::-webkit-scrollbar{width:6px}.adm aside .asin::-webkit-scrollbar-thumb{background:#ffffff33;border-radius:6px}
+  .adm aside .asin .me{margin-top:auto}
+}
+@media(max-width:1000px){.adm aside .asin{display:flex;flex-direction:column;gap:2px;padding:18px 14px 24px;min-height:100%}}
