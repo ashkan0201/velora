@@ -58,7 +58,10 @@ addCol('users','password',"TEXT DEFAULT ''");
 for(const c of ['receiver','receiver_phone','province','city','postal_code'])addCol('addresses',c,"TEXT DEFAULT ''");
 for(const c of ['province','city','postal_code','ship_method'])addCol('orders',c,"TEXT DEFAULT ''");addCol('banners','icon',"TEXT DEFAULT ''");addCol('orders','ship_cost','INTEGER DEFAULT 0');addCol('orders','ship_collect','INTEGER DEFAULT 0');addCol('products','ship_collect','INTEGER DEFAULT 0');
 db.prepare("INSERT OR IGNORE INTO settings VALUES('tipax_fee','90000')").run();
-db.prepare("INSERT OR IGNORE INTO settings VALUES('pack_fee','0')").run();addCol('orders','pack_cost','INTEGER DEFAULT 0');
+db.prepare("INSERT OR IGNORE INTO settings VALUES('pack_fee','0')").run();addCol('orders','pack_cost','INTEGER DEFAULT 0');addCol('orders','stock_out','INTEGER DEFAULT 0');addCol('admins','role',"TEXT DEFAULT 'owner'");addCol('admins','perms',"TEXT DEFAULT ''");addCol('admins','active','INTEGER DEFAULT 1');addCol('admins','created','TEXT');
+if(!db.prepare("SELECT 1 FROM settings WHERE key='mig_stock_v2'").get()){ // old model deducted at checkout: give stock back for unpaid orders, mark paid/shipped/done as deducted
+  db.prepare("SELECT id FROM orders WHERE status='pending_payment'").all().forEach(o=>db.prepare('SELECT product_id,qty FROM order_items WHERE order_id=?').all(o.id).forEach(i=>db.prepare('UPDATE products SET stock=stock+? WHERE id=?').run(i.qty,i.product_id)));
+  db.prepare("UPDATE orders SET stock_out=1 WHERE status IN ('paid','shipped','done')").run();db.prepare("INSERT INTO settings VALUES('mig_stock_v2','1')").run();}
 for (const [k,v] of Object.entries({hero_title:'زیبایی تو، امضای ما',hero_sub:'برترین برندهای آرایشی و بهداشتی اصل، با ضمانت اصالت و ارسال سریع'})) db.prepare('INSERT OR IGNORE INTO settings VALUES(?,?)').run(k,v);
 module.exports = db;
 

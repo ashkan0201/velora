@@ -1,0 +1,19 @@
+<%- include('_h',{t:'کاربران پنل',sub:'افزودن همکار و تعیین سطح دسترسی هر بخش'}) %>
+<% const ed=edit?rows.find(r=>r.id===edit):null; const isNew=!ed; const pm=ed?ed.pm:{}; %>
+<div class="cpgrid">
+<form method="post" action="<%= ADM %>/staff/save?_csrf=<%= csrf %>" enctype="multipart/form-data" class="card"><h3><%- ic('plus') %> <%= ed?('ویرایش «'+ed.username+'»'):'کاربر جدید' %></h3>
+<% if(ed){ %><input type="hidden" name="id" value="<%= ed.id %>"><% } %>
+<% if(!ed){ %><label>نام کاربری <span class="req">*</span></label><input name="username" required dir="ltr" autocomplete="off" placeholder="ali" pattern="[A-Za-z0-9_.\-]{3,30}"><% } %>
+<label><%= ed?'رمز جدید (خالی = بدون تغییر)':'رمز عبور *' %></label><input name="password" type="password" dir="ltr" autocomplete="new-password" <%= ed?'':'required' %> minlength="8" placeholder="حداقل ۸ کاراکتر">
+<% if(!ed||ed.role!=='owner'){ %><h3 style="margin-top:18px"><%- ic('shield') %> سطح دسترسی</h3><p class="help">برای هر بخش: «بدون دسترسی»، «فقط مشاهده» یا «مشاهده و ویرایش».</p>
+<div class="perms"><% SECS.forEach(([k,n])=>{ const v=pm[k]||''; %><div class="pr"><span><%= n %></span><select name="p_<%= k %>"><option value="" <%= v===''?'selected':'' %>>بدون دسترسی</option><option value="r" <%= v==='r'?'selected':'' %>>فقط مشاهده</option><option value="w" <%= v==='w'?'selected':'' %>>مشاهده و ویرایش</option></select></div><% }) %></div>
+<div style="display:flex;gap:8px;margin:10px 0 0"><button type="button" class="btn o sm" data-all="w">همه: ویرایش</button><button type="button" class="btn o sm" data-all="r">همه: مشاهده</button><button type="button" class="btn o sm" data-all="">هیچ‌کدام</button></div>
+<% }else{ %><p class="help">مدیر اصلی همیشه به همهٔ بخش‌ها دسترسی کامل دارد.</p><% } %>
+<br><button class="btn" style="width:100%"><%= ed?'ذخیره تغییرات':'افزودن کاربر' %></button><% if(ed){ %><a class="btn o" style="width:100%;margin-top:8px" href="<%= ADM %>/staff">انصراف</a><% } %></form>
+<div class="tbl"><div class="scr"><table class="cpt"><thead><tr><th>کاربر</th><th>نقش</th><th>دسترسی‌ها</th><th>وضعیت</th><th></th></tr></thead><tbody><% rows.forEach(a=>{ const n=Object.keys(a.pm).length; %><tr>
+<td data-l="کاربر"><b dir="ltr"><%= a.username %></b></td><td data-l="نقش"><span class="pill <%= a.role==='owner'?'gold':'mute' %>"><%= a.role==='owner'?'مدیر اصلی':'همکار' %></span></td>
+<td data-l="دسترسی‌ها"><small><%= a.role==='owner'?'کامل':(n?fa(n)+' بخش':'هیچ') %></small></td>
+<td data-l="وضعیت"><span class="pill <%= a.active?'ok':'bad' %>"><%= a.active?'فعال':'غیرفعال' %></span></td>
+<td><div class="acts2"><a class="ib" href="<%= ADM %>/staff?edit=<%= a.id %>" title="ویرایش"><%- ic('edit') %></a><% if(a.role!=='owner'){ %><form method="post" action="<%= ADM %>/staff/<%= a.id %>/toggle?_csrf=<%= csrf %>"><button class="pill <%= a.active?'mute':'ok' %>" style="border:0;cursor:pointer;font:inherit"><%= a.active?'غیرفعال‌سازی':'فعال‌سازی' %></button></form><form method="post" action="<%= ADM %>/staff/<%= a.id %>/delete?_csrf=<%= csrf %>" data-confirm="این کاربر حذف شود؟"><button class="ib d"><%- ic('trash') %></button></form><% } %></div></td></tr><% }) %></tbody></table></div></div></div>
+<script nonce="<%= nonce %>">document.querySelectorAll('[data-all]').forEach(b=>b.addEventListener('click',()=>document.querySelectorAll('.perms select').forEach(s=>s.value=b.dataset.all)))</script>
+<%- include('_f') %>

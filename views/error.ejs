@@ -1,0 +1,10 @@
+<% const home=typeof S!=='undefined'; %>
+<% if(full){ %><%- include('partials/head') %><% }else{ %><!DOCTYPE html><html lang="fa" dir="rtl"><head><script src="/js/theme.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title><%= code %> | VELORA</title><link rel="icon" href="/img/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/css/style.css"></head><body><main><% } %>
+<section class="errp"><div class="errp-in">
+<div class="errp-code" aria-hidden="true"><span><%= String(code)[0] %></span><i></i><span><%= String(code)[1] %></span><span><%= String(code)[2] %></span></div>
+<h1><%= etitle %></h1><p><%= emsg %></p>
+<div class="errp-btns"><a class="btn lg" href="/"><%- typeof ic==='function'?ic('spark'):'' %> بازگشت به خانه</a><a class="btn o lg" href="/shop">مشاهده محصولات</a><button class="btn o lg" type="button" onclick="history.length>1?history.back():location.href='/'">بازگشت به صفحه قبل</button></div>
+<% if(code===404||code===403){ %><form class="errp-s" action="/shop" method="get"><input name="q" placeholder="جستجوی محصول، برند..." aria-label="جستجو"><button class="btn sm">جستجو</button></form><% } %>
+<small class="errp-ref">کد خطا: <%= code %></small>
+</div></section>
+<% if(full){ %><%- include('partials/foot') %><% }else{ %></main></body></html><% } %>

@@ -2,11 +2,11 @@
 <title><%= typeof t!=='undefined'?t+' | ':'' %>پنل مدیریت VELORA</title><link rel="stylesheet" href="/css/style.css?v=<%= v %>"><link rel="stylesheet" href="/css/admin.css?v=<%= v %>"></head>
 <body class="adminbody"><div class="adm"><aside><div class="asin">
 <a class="brand" href="<%= ADM %>"><img src="/img/logo.svg" alt="VELORA"></a>
-<% const L=(h,i,n,b)=>`<a href="${h}" class="${(h===ADM?ap===ADM:ap.startsWith(h))?'on':''}">${ic(i)}<span>${n}</span>${b?`<em class="bd" style="font-style:normal">${b}</em>`:''}</a>`; %>
+<% const L=(h,i,n,b)=>{const sec=h.slice(ADM.length+1).split('/')[0];if(sec&&!can(sec))return '';return `<a href="${h}" class="${(h===ADM?ap===ADM:ap.startsWith(h))?'on':''}">${ic(i)}<span>${n}</span>${b?`<em class="bd" style="font-style:normal">${b}</em>`:''}</a>`}; %>
 <%- L(ADM+'','dash','داشبورد') %>
 <h6>فروش</h6><%- L(ADM+'/orders','box','سفارش‌ها',badge.orders) %><%- L(ADM+'/users','users','مشتریان') %><%- L(ADM+'/sms','chat','پنل پیامک') %><%- L(ADM+'/carts','bag','سبدهای خرید') %><%- L(ADM+'/coupons','ticket','کدهای تخفیف') %><%- L(ADM+'/reviews','chat','نظرات') %>
 <h6>کاتالوگ</h6><%- L(ADM+'/products','bag','محصولات',badge.low) %><%- L(ADM+'/categories','folder','دسته‌بندی‌ها') %><%- L(ADM+'/banners','image','بنرهای صفحه اصلی') %><%- L(ADM+'/testimonials','chat','نظرات صفحه اصلی') %>
-<h6>تنظیمات</h6><%- L(ADM+'/settings','gear','اطلاعات فروشگاه و سئو') %><%- L(ADM+'/payment','card','درگاه پرداخت') %><%- L(ADM+'/audit','shield','گزارش امنیتی') %>
+<h6>تنظیمات</h6><%- L(ADM+'/settings','gear','اطلاعات فروشگاه و سئو') %><%- L(ADM+'/payment','card','درگاه پرداخت') %><%- L(ADM+'/audit','shield','گزارش امنیتی') %><% if(isOwner){ %><%- L(ADM+'/staff','users','کاربران پنل') %><% }else{ %><%- L(ADM+'/me','lock','حساب من') %><% } %>
 <div class="me"><span class="av"><%= (admin&&admin.username||'A')[0].toUpperCase() %></span><div style="flex:1"><%= admin&&admin.username %><br><small style="color:#8f7f96">مدیر</small></div></div>
 <a href="/" target="_blank"><%- ic('ext') %><span>مشاهده سایت</span></a>
 <form method="post" action="<%= ADM %>/logout?_csrf=<%= csrf %>"><button class="lk"><%- ic('logout') %><span>خروج</span></button></form></div></aside>

@@ -11,6 +11,10 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = process.env.SESSION_SECRET || fs.readFileSync(secretFile,'utf8');
 app.set('view engine','ejs'); app.set('views', path.join(__dirname,'views')); app.disable('x-powered-by');
 if (PROD) app.set('trust proxy', 1);
+const ERR={400:['درخواست نامعتبر','درخواست شما قابل پردازش نبود. لطفاً دوباره تلاش کنید.'],403:['نشست منقضی شده','نشست شما منقضی شده یا درخواست معتبر نبود. صفحه را رفرش کنید و دوباره تلاش کنید.'],404:['صفحه پیدا نشد','آدرسی که وارد کرده‌اید وجود ندارد یا جابه‌جا شده است.'],413:['حجم فایل زیاد است','فایل انتخاب‌شده بزرگ‌تر از حد مجاز است (حداکثر ۵ مگابایت).'],429:['درخواست بیش از حد','تعداد درخواست‌های شما زیاد بود. چند دقیقه بعد دوباره تلاش کنید.'],500:['خطای سرور','مشکلی در سرور پیش آمد. ما در جریان هستیم؛ لطفاً کمی بعد دوباره تلاش کنید.']};
+const errPage=(res,code,msg)=>{const e=ERR[code]||ERR[500];if(res.headersSent)return;res.status(code);try{res.render('error',{code,etitle:e[0],emsg:msg||e[1],full:typeof res.locals.S!=='undefined'&&typeof res.locals.cats!=='undefined'},(err,html)=>{if(err){console.error('errPage',err.message);return res.type('text').send(e[0])}res.send(html)})}catch(x){res.type('text').send(e[0])}};
+// safe internal redirect target (blocks //evil.com, /\evil.com, absolute URLs)
+const safeNext=(n,d='/account')=>{n=String(n||'');return /^\/(?![\/\\])[^\r\n]*$/.test(n)?n:d};
 app.use((req,res,next)=>{res.locals.nonce=crypto.randomBytes(16).toString('base64');next();});
 app.use(helmet({
   contentSecurityPolicy:{useDefaults:false,directives:{
@@ -22,6 +26,7 @@ app.use(helmet({
     connectSrc:["'self'"],objectSrc:["'none'"],baseUri:["'self'"],frameAncestors:["'self'"],formAction:["'self'"]}},
   crossOriginEmbedderPolicy:false, hsts:PROD, referrerPolicy:{policy:'strict-origin-when-cross-origin'}}));
 app.use(express.urlencoded({extended:false,limit:'200kb'})); app.use(express.json({limit:'100kb'}));
+app.use((req,res,next)=>{if(!req.body||typeof req.body!=='object')req.body={};next()});
 app.use(express.static(path.join(__dirname,'public'),{maxAge:PROD?'7d':0,setHeaders:(r,p)=>{if(p.includes('/uploads/'))r.setHeader('Content-Disposition','inline');r.setHeader('X-Content-Type-Options','nosniff')}}));
 class SqlStore extends session.Store{
   get(sid,cb){try{const r=db.prepare('SELECT data,expires FROM sessions WHERE sid=?').get(sid);if(!r||r.expires<Date.now())return cb(null,null);cb(null,JSON.parse(r.data));}catch(e){cb(e)}}
@@ -38,11 +43,11 @@ app.use((req,res,next)=>{
   const t=req.get('x-csrf-token')||req.query._csrf||(req.body&&req.body._csrf)||'';
   const a=Buffer.from(String(t)),b=Buffer.from(req.session.csrf);
   if(a.length===b.length&&crypto.timingSafeEqual(a,b)) return next();
-  res.status(403).send('نشست منقضی شده یا درخواست نامعتبر است. صفحه را رفرش کنید.');
+  errPage(res,403);
 });
-const limiter=(max,min,msg)=>rateLimit({windowMs:min*60000,max,standardHeaders:true,legacyHeaders:false,handler:(req,res)=>res.status(429).send(msg||'تعداد درخواست‌ها زیاد است. کمی بعد تلاش کنید.')});
+const limiter=(max,min,msg)=>rateLimit({windowMs:min*60000,max,standardHeaders:true,legacyHeaders:false,handler:(req,res)=>errPage(res,429,msg)});
 app.use(limiter(600,1));
-const audit=(req,action)=>db.prepare('INSERT INTO audit(who,action,ip) VALUES(?,?,?)').run(req.session.adminId?('admin#'+req.session.adminId):'-',action,req.ip);
+const audit=(req,action)=>db.prepare('INSERT INTO audit(who,action,ip) VALUES(?,?,?)').run(req.session.adminId?((db.prepare('SELECT username FROM admins WHERE id=?').get(req.session.adminId)||{}).username||('admin#'+req.session.adminId)):'-',action,req.ip);
 
 const EXT=new Set(['.jpg','.jpeg','.png','.webp','.gif']);
 const upload = multer({storage:multer.diskStorage({destination:'public/uploads',filename:(r,f,cb)=>cb(null,Date.now()+'-'+crypto.randomBytes(4).toString('hex')+path.extname(f.originalname).toLowerCase())}),
@@ -71,8 +76,12 @@ app.use((req,res,next)=>{
 });
 
 // expire timed discounts
-const failStale=()=>{try{const o=db.prepare("SELECT id FROM orders WHERE status='pending_payment' AND created<datetime('now','-1 hour')").all();
-  o.forEach(x=>{db.prepare("UPDATE orders SET status='failed' WHERE id=?").run(x.id);db.prepare('SELECT product_id,qty FROM order_items WHERE order_id=?').all(x.id).forEach(i=>db.prepare('UPDATE products SET stock=stock+? WHERE id=?').run(i.qty,i.product_id))})}catch(e){console.error('failStale',e.message)}};
+const OUT=new Set(['paid','shipped','done']);
+// stock is deducted when an order becomes paid (or later), restored if it moves back to unpaid / cancelled / failed
+const syncStock=(oid,status)=>{const o=db.prepare('SELECT stock_out FROM orders WHERE id=?').get(oid);if(!o)return;const want=OUT.has(status);
+  if(want&&!o.stock_out){db.prepare('SELECT product_id,qty FROM order_items WHERE order_id=?').all(oid).forEach(i=>db.prepare('UPDATE products SET stock=MAX(0,stock-?) WHERE id=?').run(i.qty,i.product_id));db.prepare('UPDATE orders SET stock_out=1 WHERE id=?').run(oid)}
+  else if(!want&&o.stock_out){db.prepare('SELECT product_id,qty FROM order_items WHERE order_id=?').all(oid).forEach(i=>db.prepare('UPDATE products SET stock=stock+? WHERE id=?').run(i.qty,i.product_id));db.prepare('UPDATE orders SET stock_out=0 WHERE id=?').run(oid)}};
+const failStale=()=>{try{db.prepare("UPDATE orders SET status='failed' WHERE status='pending_payment' AND created<datetime('now','-1 hour')").run()}catch(e){console.error('failStale',e.message)}};
 setInterval(failStale,60000);failStale();
 let lastExp=0;app.use((req,res,next)=>{const n=Date.now();if(n-lastExp>20000){lastExp=n;try{db.prepare("UPDATE products SET discount=0,daily_deal=0,deal_ends='' WHERE deal_ends<>'' AND deal_ends<?").run(new Date().toISOString())}catch(e){}}next()});
 // ---------- storefront
@@ -104,13 +113,13 @@ app.get('/shop',(req,res)=>{
   res.render('shop',{title:q?`نتایج «${q}»`:req.query.deals?'تخفیف‌ها':'همه محصولات',products:productsQ(F.where,F.args,ORD[sort]||'p.created DESC'),category:null,q,sort,f:F.f,brands:brandsList(),fcats:db.prepare('SELECT id,name FROM categories ORDER BY sort,id').all()});
 });
 app.get('/category/:slug',(req,res)=>{
-  const c=db.prepare('SELECT * FROM categories WHERE slug=?').get(req.params.slug); if(!c) return res.status(404).render('404');
+  const c=db.prepare('SELECT * FROM categories WHERE slug=?').get(req.params.slug); if(!c) return res.status(404).render('error',{code:404,etitle:ERR[404][0],emsg:ERR[404][1],full:true});
   const F=shopFilter(req);
   res.locals.meta.title=`خرید ${c.name} | VELORA`; res.locals.meta.desc=`بهترین‌های ${c.name} با قیمت مناسب و ضمانت اصالت در VELORA`;
   res.render('shop',{title:c.name,products:productsQ(`AND category_id IN (SELECT ? UNION SELECT id FROM categories WHERE parent_id=?)`+F.where,[c.id,c.id,...F.args],ORD[req.query.sort]||'p.created DESC'),category:c,subs:db.prepare('SELECT * FROM categories WHERE parent_id=? ORDER BY sort,id').all(c.id),parent:c.parent_id?db.prepare('SELECT * FROM categories WHERE id=?').get(c.parent_id):null,q:F.q,sort:req.query.sort,f:F.f,brands:brandsList(),fcats:null});
 });
 app.get('/product/:slug',(req,res)=>{
-  const p=productsQ('AND p.slug=?',[req.params.slug],'1',1)[0]; if(!p) return res.status(404).render('404');
+  const p=productsQ('AND p.slug=?',[req.params.slug],'1',1)[0]; if(!p) return res.status(404).render('error',{code:404,etitle:ERR[404][0],emsg:ERR[404][1],full:true});
   db.prepare('UPDATE products SET views=views+1 WHERE id=?').run(p.id);
   let similar=p.category_id?productsQ('AND category_id=? AND p.id!=?',[p.category_id,p.id],'RANDOM()',8):[];
   if(similar.length<4){const have=[p.id,...similar.map(x=>x.id)];similar=similar.concat(productsQ(`AND p.id NOT IN (${have.map(()=>'?').join(',')})`+(p.brand?' AND p.brand=?':''),p.brand?[...have,p.brand]:have,'RANDOM()',8-similar.length));}
@@ -125,7 +134,7 @@ app.get('/product/:slug',(req,res)=>{
 });
 app.post('/product/:slug/review',(req,res)=>{
   if(!req.session.userId){req.session.next='/product/'+req.params.slug;return res.redirect('/login');}
-  const p=db.prepare('SELECT id FROM products WHERE slug=?').get(req.params.slug); if(!p) return res.status(404).render('404');
+  const p=db.prepare('SELECT id FROM products WHERE slug=?').get(req.params.slug); if(!p) return res.status(404).render('error',{code:404,etitle:ERR[404][0],emsg:ERR[404][1],full:true});
   const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.session.userId);
   const r=Math.min(5,Math.max(1,+req.body.rating||5)), body=String(req.body.body||'').trim().slice(0,800); if(!body){return res.redirect('/product/'+req.params.slug);}
   if(db.prepare('SELECT 1 FROM reviews WHERE product_id=? AND user_id=?').get(p.id,u.id)){req.session.flash='شما قبلاً نظر داده‌اید';return res.redirect('/product/'+req.params.slug+'#reviews');}
@@ -149,7 +158,7 @@ const cartItems=req=>{const ids=Object.keys(req.session.cart).map(Number).filter
   const items=rows.map(p=>({p,qty:Math.min(req.session.cart[p.id],p.stock||0)||0,price:finalPrice(p)})).filter(i=>i.qty>0);
   const sub=items.reduce((a,i)=>a+i.price*i.qty,0);return{items,sub,...couponCalc(req,sub)};};
 const isCollect=(S,items)=>S.ship_collect==='1'||(items&&items.length>0&&items.every(i=>i.p.ship_collect));
-const shipping=(S,sub,m,items)=>isCollect(S,items)||sub===0||sub>=+S.free_shipping?0:(m==='tipax'?+(S.tipax_fee||S.shipping_fee):+S.shipping_fee);
+const shipping=(S,sub,m,items)=>isCollect(S,items)||sub===0?0:(m==='tipax'?+(S.tipax_fee||S.shipping_fee):+S.shipping_fee);
 const packFee=(S,sub)=>sub>0?Math.max(0,Math.floor(+S.pack_fee||0)):0;
 const METHODS={pishtaz:'پست پیشتاز',tipax:'تیپاکس'};
 app.get('/cart',(req,res)=>{const c=cartItems(req);res.render('cart',{...c,pack:packFee(res.locals.S,c.sub-c.off),collect:isCollect(res.locals.S,c.items),ship:shipping(res.locals.S,c.sub-c.off,'',c.items)});});
@@ -178,7 +187,7 @@ app.post('/checkout',(req,res)=>{
   const r=db.prepare('INSERT INTO orders(user_id,total,name,phone,address,note,coupon,discount_amount,province,city,postal_code,ship_method,ship_cost,ship_collect,pack_cost) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(req.session.userId,total,cl(b.name,100),phone,cl(b.address),cl(b.note),c.code,c.off,cl(b.province,50),cl(b.city,50),postal,method,ship,col,pk);
   if(c.code)db.prepare('UPDATE coupons SET used=used+1 WHERE code=?').run(c.code);
   const ins=db.prepare('INSERT INTO order_items(order_id,product_id,name,price,qty) VALUES(?,?,?,?,?)');
-  c.items.forEach(i=>{ins.run(r.lastInsertRowid,i.p.id,i.p.name,i.price,i.qty);db.prepare('UPDATE products SET stock=MAX(0,stock-?) WHERE id=?').run(i.qty,i.p.id);});
+  c.items.forEach(i=>ins.run(r.lastInsertRowid,i.p.id,i.p.name,i.price,i.qty)); // stock is deducted only when the order becomes "paid" (see syncStock)
   req.session.cart={};delete req.session.coupon; // TODO: redirect to payment gateway
   res.redirect('/account/orders/'+r.lastInsertRowid+'?new=1');
 });
@@ -198,13 +207,13 @@ const issueOtp=phone=>{const last=db.prepare('SELECT * FROM otps WHERE phone=?')
   if(last&&last.expires-120000+60000>Date.now())return{err:'لطفاً یک دقیقه صبر کنید'};
   const code=String(crypto.randomInt(10000,100000));db.prepare('DELETE FROM otps WHERE phone=?').run(phone);
   db.prepare('INSERT INTO otps(phone,code,expires) VALUES(?,?,?)').run(phone,crypto.createHash('sha256').update(code+SECRET).digest('hex'),Date.now()+120000);sendSms(phone,code);
-  const smsOn=(()=>{const S=getSettings();return S.sms_key&&S.sms_template&&S.sms_on!=='0'})();return{code:(process.env.OTP_DEV==='0'||smsOn)?null:code};};
+  const smsOn=(()=>{const S=getSettings();return S.sms_key&&S.sms_template&&S.sms_on!=='0'})();return{code:(PROD||process.env.OTP_DEV==='0'||smsOn)?null:code};};
 const checkOtp=(phone,code)=>{const o=db.prepare('SELECT * FROM otps WHERE phone=?').get(phone);const h=crypto.createHash('sha256').update(fdig(code)+SECRET).digest('hex');
   if(!o||o.expires<Date.now()||o.tries>=5||o.code!==h){if(o)db.prepare('UPDATE otps SET tries=tries+1 WHERE phone=?').run(phone);return false;}
   db.prepare('DELETE FROM otps WHERE phone=?').run(phone);return true;};
 const loginAs=(req,res,u,to)=>{const oldSid=req.sessionID,keep={cart:req.session.cart,next:req.session.next};req.session.regenerate(()=>{Object.assign(req.session,keep,{userId:u.id});
   const sv=loadCart('u:'+u.id);for(const[k,q]of Object.entries(sv))req.session.cart[k]=Math.min(50,Math.max(req.session.cart[k]||0,q));
-  db.prepare('DELETE FROM carts WHERE owner=?').run('s:'+oldSid);saveCart(req);const n=req.session.next;delete req.session.next;res.redirect(to||(n&&n.startsWith('/')?n:'/account'));});};
+  db.prepare('DELETE FROM carts WHERE owner=?').run('s:'+oldSid);saveCart(req);const n=req.session.next;delete req.session.next;res.redirect(to||safeNext(n));});};
 const lim=limiter(10,10,'تلاش بیش از حد. ۱۰ دقیقه دیگر دوباره امتحان کنید.');
 // password login
 app.get('/login',(req,res)=>{if(req.session.userId)return res.redirect('/account');rl(res,{mode:req.query.otp?'otp':'login'});});
@@ -248,7 +257,7 @@ app.post('/login/verify',limiter(12,10,'تلاش بیش از حد.'),(req,res)=>
 app.post('/logout',(req,res)=>{saveCart(req);delete req.session.userId;req.session.cart={};delete req.session.coupon;res.redirect('/');});
 const needUser=(req,res,next)=>{if(!req.session.userId||!res.locals.user)return res.redirect('/login');if(res.locals.user.blocked){delete req.session.userId;return res.redirect('/login');}next();};
 // complete profile
-app.get('/account/complete',needUser,(req,res)=>res.render('complete',{a:addrs(res.locals.user.id)[0]||{},next:String(req.query.next||'/account').startsWith('/')?String(req.query.next||'/account'):'/account'}));
+app.get('/account/complete',needUser,(req,res)=>res.render('complete',{a:addrs(res.locals.user.id)[0]||{},next:safeNext(req.query.next)}));
 app.post('/account/complete',needUser,(req,res)=>{const b=req.body,u=res.locals.user,cl=(x,n)=>String(x||'').trim().slice(0,n),postal=fdig(b.postal_code),nx=String(b.next||'/account').startsWith('/')?String(b.next):'/account';
   if(!cl(b.first_name,60)||!cl(b.last_name,60)||!cl(b.province,50)||!cl(b.city,50)||!cl(b.address,500)||!/^\d{10}$/.test(postal)){req.session.flash='همه فیلدها الزامی است و کد پستی باید ۱۰ رقم باشد';return res.redirect('/account/complete?next='+encodeURIComponent(nx));}
   db.prepare('UPDATE users SET first_name=?,last_name=?,email=? WHERE id=?').run(cl(b.first_name,60),cl(b.last_name,60),cl(b.email,120),u.id);
@@ -282,7 +291,7 @@ app.post('/account/address/:id/default',needUser,(req,res)=>{const uid=req.sessi
 app.post('/account/address/:id/delete',needUser,(req,res)=>{const uid=req.session.userId;db.prepare('DELETE FROM addresses WHERE id=? AND user_id=?').run(+req.params.id,uid);syncDef(uid);req.session.flash='آدرس حذف شد';res.redirect('/account#addr');});
 app.get('/account/orders',needUser,(req,res)=>res.render('orders',{orders:db.prepare('SELECT * FROM orders WHERE user_id=? ORDER BY id DESC').all(req.session.userId).map(o=>({...o,items:db.prepare('SELECT oi.*,p.image FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE order_id=?').all(o.id)}))}));
 app.get('/account/orders/:id',needUser,(req,res)=>{const o=db.prepare('SELECT * FROM orders WHERE id=? AND user_id=?').get(+req.params.id,req.session.userId);
-  if(!o)return res.status(404).render('404');res.render('order',{o,items:db.prepare('SELECT oi.*,p.image,p.slug FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE order_id=?').all(o.id),fresh:!!req.query.new});});
+  if(!o)return res.status(404).render('error',{code:404,etitle:ERR[404][0],emsg:ERR[404][1],full:true});res.render('order',{o,items:db.prepare('SELECT oi.*,p.image,p.slug FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE order_id=?').all(o.id),fresh:!!req.query.new});});
 
 // ---------- SEO
 app.get('/robots.txt',(req,res)=>res.type('text').send(`User-agent: *\nDisallow: /account\nDisallow: /cart\nDisallow: /checkout\nSitemap: ${SITE}/sitemap.xml\n`));
@@ -296,12 +305,24 @@ const salesDays=()=>{const fmt=new Intl.DateTimeFormat('fa-IR-u-ca-persian',{day
   const out=[];for(let i=6;i>=0;i--){const dt=new Date(Date.now()-i*864e5),k=iso.format(dt),r=m[k];out.push({d:fmt.format(dt),s:r?r.s:0,n:r?r.n:0})}return out};
 const A=express.Router();
 A.get('/login',(req,res)=>res.render("admin/login"));
-A.post('/login',limiter(8,15,'تلاش ورود بیش از حد. ۱۵ دقیقه صبر کنید.'),(req,res)=>{const a=db.prepare('SELECT * FROM admins WHERE username=?').get(req.body.username||'');
+A.post('/login',limiter(8,15,'تلاش ورود بیش از حد. ۱۵ دقیقه صبر کنید.'),(req,res)=>{const a=db.prepare('SELECT * FROM admins WHERE username=? AND active=1').get(String(req.body.username||''));
   if(a&&bcrypt.compareSync(req.body.password||'',a.password)){const keep={};req.session.regenerate(()=>{req.session.adminId=a.id;audit(req,'login ok');res.redirect(ADM);});return;}
   audit(req,'login FAIL '+String(req.body.username||'').slice(0,30));
   res.render('admin/login',{error:'نام کاربری یا رمز اشتباه است'});});
 A.post('/logout',(req,res)=>{delete req.session.adminId;res.redirect(ADM+'/login');});
-A.use((req,res,next)=>req.session.adminId?next():res.redirect(ADM+'/login'));
+const SECS=[['orders','سفارش‌ها'],['users','مشتریان'],['sms','پنل پیامک'],['carts','سبدهای خرید'],['coupons','کدهای تخفیف'],['reviews','نظرات'],['products','محصولات'],['categories','دسته‌بندی‌ها'],['banners','بنرها'],['testimonials','نظرات صفحه اصلی'],['settings','تنظیمات فروشگاه و سئو'],['payment','درگاه پرداخت'],['audit','گزارش امنیتی']];
+const ALIAS={gallery:'products','sms-test':'sms'},FREE=new Set(['','account','me','logout']);
+const parsePerms=a=>{try{return JSON.parse(a.perms||'{}')||{}}catch(e){return {}}};
+const level=(a,sec)=>a.role==='owner'?'w':(parsePerms(a)[sec]||'');
+A.use((req,res,next)=>{const a=req.session.adminId&&db.prepare('SELECT * FROM admins WHERE id=? AND active=1').get(req.session.adminId);
+  if(!a){delete req.session.adminId;return res.redirect(ADM+'/login');}
+  req.admin=a;res.locals.can=(sec,w)=>{const l=level(a,sec);return w?l==='w':!!l};res.locals.isOwner=a.role==='owner';
+  let sec=req.path.split('/')[1]||'';sec=ALIAS[sec]||sec;
+  if(sec==='staff'){if(a.role==='owner')return next();return errPage(res,403,'فقط مدیر اصلی به این بخش دسترسی دارد.');}
+  if(FREE.has(sec))return next();
+  const l=level(a,sec),write=!['GET','HEAD'].includes(req.method);
+  if(l==='w'||(l==='r'&&!write))return next();
+  errPage(res,403,l==='r'?'شما فقط اجازه مشاهدهٔ این بخش را دارید.':'شما به این بخش دسترسی ندارید. با مدیر اصلی تماس بگیرید.');});
 const flash=(req,m)=>req.session.flash=m;
 A.get('/',(req,res)=>{const n=t=>db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
   res.render('admin/dashboard',{stats:{products:n('products'),orders:n('orders'),users:n('users'),cats:n('categories'),revenue:db.prepare("SELECT COALESCE(SUM(total),0) s FROM orders WHERE status IN ('paid','shipped','done')").get().s},
@@ -360,8 +381,9 @@ A.post('/banners/save',upload.single('image'),(req,res)=>{const b=req.body,icon=
 A.post('/banners/:id/delete',(req,res)=>{db.prepare('DELETE FROM banners WHERE id=?').run(+req.params.id);res.redirect(ADM+'/banners');});
 // orders / users
 A.get('/orders',(req,res)=>{const st=req.query.status||'';const rows=st?db.prepare('SELECT * FROM orders WHERE status=? ORDER BY id DESC').all(st):db.prepare('SELECT * FROM orders ORDER BY id DESC').all();const cnt=Object.fromEntries(db.prepare('SELECT status,COUNT(*) c FROM orders GROUP BY status').all().map(r=>[r.status,r.c]));res.render('admin/orders',{rows,st,cnt});});
-A.get('/orders/:id',(req,res)=>{const o=db.prepare('SELECT * FROM orders WHERE id=?').get(+req.params.id);res.render('admin/order',{o,items:db.prepare('SELECT * FROM order_items WHERE order_id=?').all(o.id)});});
-A.post('/orders/:id/status',(req,res)=>{db.prepare('UPDATE orders SET status=? WHERE id=?').run(req.body.status,+req.params.id);res.redirect(ADM+'/orders/'+req.params.id);});
+A.get('/orders/:id',(req,res)=>{const o=db.prepare('SELECT * FROM orders WHERE id=?').get(+req.params.id);if(!o)return res.redirect(ADM+'/orders');res.render('admin/order',{o,items:db.prepare('SELECT * FROM order_items WHERE order_id=?').all(o.id)});});
+A.post('/orders/:id/status',(req,res)=>{const ns=String(req.body.status||'');if(!res.locals.ST[ns]){flash(req,'وضعیت نامعتبر است');return res.redirect(ADM+'/orders/'+(+req.params.id))}const o=db.prepare('SELECT status FROM orders WHERE id=?').get(+req.params.id);if(!o)return res.redirect(ADM+'/orders');
+  db.prepare('UPDATE orders SET status=? WHERE id=?').run(ns,+req.params.id);syncStock(+req.params.id,ns);audit(req,'order '+req.params.id+' -> '+ns);res.redirect(ADM+'/orders/'+req.params.id);});
 const CART_TTL=86400;
 A.get('/carts',(req,res)=>{db.prepare("DELETE FROM carts WHERE updated<datetime('now','-1 day')").run();
   const rows=db.prepare("SELECT c.*,u.first_name,u.last_name,u.phone,u.email,CAST(strftime('%s',c.updated)AS INTEGER)+? - CAST(strftime('%s','now')AS INTEGER) AS secs FROM carts c LEFT JOIN users u ON u.id=c.user_id ORDER BY c.updated DESC").all(CART_TTL).map(r=>{const d=JSON.parse(r.data||'{}'),ids=Object.keys(d).map(Number).filter(Boolean);
@@ -381,13 +403,13 @@ A.get('/users',(req,res)=>res.render('admin/users',{rows:db.prepare('SELECT u.*,
 A.get('/settings',(req,res)=>res.render('admin/settings',{smsLog:db.prepare('SELECT * FROM sms_log ORDER BY id DESC LIMIT 5').all(),smsStat:db.prepare('SELECT COUNT(*) n,COALESCE(SUM(ok),0) ok FROM sms_log').get()}));
 A.post('/sms-test',upload.none(),async(req,res)=>{const ph=normPhone(req.body.phone);if(!ph){flash(req,'شماره معتبر نیست');return res.redirect(ADM+'/settings');}
   const r=await sendSms(ph,String(crypto.randomInt(10000,100000)),'test');flash(req,r.ok?'پیامک آزمایشی ارسال شد':'ارسال ناموفق: '+(r.msg||r.why||'خطا'));res.redirect(ADM+'/settings');});
-A.post('/settings',upload.none(),(req,res)=>{const st=db.prepare('INSERT OR REPLACE INTO settings VALUES(?,?)');for(const[k,v]of Object.entries(req.body)){if(k==='_csrf')continue;if(k==='sms_key'&&!String(Array.isArray(v)?v[v.length-1]:v).trim())continue;st.run(k,String(Array.isArray(v)?v[v.length-1]:v));}flash(req,'تنظیمات ذخیره شد');res.redirect(ADM+'/settings');});
-A.post('/account',(req,res)=>{const b=req.body;
+A.post('/settings',upload.none(),(req,res)=>{const st=db.prepare('INSERT OR REPLACE INTO settings VALUES(?,?)');for(const[k,v]of Object.entries(req.body)){if(k==='_csrf'||k==='admin_path'||!/^[a-z0-9_]{1,40}$/.test(k))continue;if(k==='sms_key'&&!String(Array.isArray(v)?v[v.length-1]:v).trim())continue;st.run(k,String(Array.isArray(v)?v[v.length-1]:v));}flash(req,'تنظیمات ذخیره شد');res.redirect(ADM+'/settings');});
+A.post('/account',upload.none(),(req,res)=>{const b=req.body;const back=ADM+(b.back==='me'?'/me':'/settings');
   const me=db.prepare('SELECT * FROM admins WHERE id=?').get(req.session.adminId);
-  if(!bcrypt.compareSync(b.current||'',me.password)){flash(req,'رمز فعلی اشتباه است');return res.redirect(ADM+'/settings');}
+  if(!bcrypt.compareSync(b.current||'',me.password)){flash(req,'رمز فعلی اشتباه است');return res.redirect(back);}
   if(b.username)db.prepare('UPDATE admins SET username=? WHERE id=?').run(b.username,req.session.adminId);
-  if(b.password&&b.password.length>=6)db.prepare('UPDATE admins SET password=? WHERE id=?').run(bcrypt.hashSync(b.password,12),req.session.adminId);
-  flash(req,'اطلاعات ورود مدیر ذخیره شد');res.redirect(ADM+'/settings');});
+  if(b.password&&b.password.length>=8)db.prepare('UPDATE admins SET password=? WHERE id=?').run(bcrypt.hashSync(b.password,12),req.session.adminId);
+  flash(req,'اطلاعات ورود مدیر ذخیره شد');res.redirect(back);});
 A.get('/coupons',(req,res)=>res.render('admin/coupons',{rows:db.prepare('SELECT * FROM coupons ORDER BY id DESC').all()}));
 A.post('/coupons/save',(req,res)=>{const b=req.body;try{db.prepare('INSERT INTO coupons(code,percent,max_amount,min_order,expires,usage_limit) VALUES(?,?,?,?,?,?)').run(String(b.code).trim().toUpperCase(),Math.min(100,+b.percent||0),+b.max_amount||0,+b.min_order||0,b.expires||'',+b.usage_limit||0);}catch(e){req.session.flash='کد تکراری است';}res.redirect(ADM+'/coupons');});
 A.post('/coupons/:id/toggle',(req,res)=>{db.prepare('UPDATE coupons SET active=1-active WHERE id=?').run(+req.params.id);res.redirect(ADM+'/coupons');});
@@ -397,6 +419,27 @@ A.post('/reviews/:id/toggle',(req,res)=>{db.prepare('UPDATE reviews SET approved
 A.post('/reviews/:id/delete',(req,res)=>{db.prepare('DELETE FROM reviews WHERE id=?').run(+req.params.id);res.redirect(ADM+'/reviews');});
 A.post('/users/:id/delete',(req,res)=>{const id=+req.params.id;db.prepare('DELETE FROM addresses WHERE user_id=?').run(id);db.prepare('DELETE FROM users WHERE id=?').run(id);audit(req,'delete user '+id);flash(req,'کاربر حذف شد');res.redirect(ADM+'/users');});
 A.post('/users/:id/block',(req,res)=>{db.prepare('UPDATE users SET blocked=1-blocked WHERE id=?').run(+req.params.id);audit(req,'toggle block user '+req.params.id);res.redirect(ADM+'/users');});
+// staff management (owner only)
+const permsFrom=b=>{const p={};SECS.forEach(([k])=>{const v=b['p_'+k];if(v==='r'||v==='w')p[k]=v});return JSON.stringify(p)};
+const okUser=u=>/^[A-Za-z0-9_.-]{3,30}$/.test(u);
+A.get('/staff',(req,res)=>res.render('admin/staff',{rows:db.prepare('SELECT * FROM admins ORDER BY id').all().map(a=>({...a,pm:parsePerms(a)})),SECS,edit:+req.query.edit||0}));
+A.post('/staff/save',upload.none(),(req,res)=>{const b=req.body,id=+b.id||0,u=String(b.username||'').trim(),pw=String(b.password||'');
+  if(id){const a=db.prepare('SELECT * FROM admins WHERE id=?').get(id);if(!a)return res.redirect(ADM+'/staff');
+    if(a.role!=='owner')db.prepare('UPDATE admins SET perms=? WHERE id=?').run(permsFrom(b),id);
+    if(pw){if(pw.length<8){flash(req,'رمز حداقل ۸ کاراکتر باشد');return res.redirect(ADM+'/staff?edit='+id)}db.prepare('UPDATE admins SET password=? WHERE id=?').run(bcrypt.hashSync(pw,12),id)}
+    audit(req,'staff edit '+a.username);flash(req,'ذخیره شد');return res.redirect(ADM+'/staff');}
+  if(!okUser(u)){flash(req,'نام کاربری ۳ تا ۳۰ حرف انگلیسی/عدد (بدون فاصله) باشد');return res.redirect(ADM+'/staff')}
+  if(pw.length<8){flash(req,'رمز حداقل ۸ کاراکتر باشد');return res.redirect(ADM+'/staff')}
+  if(db.prepare('SELECT 1 FROM admins WHERE username=?').get(u)){flash(req,'این نام کاربری قبلاً وجود دارد');return res.redirect(ADM+'/staff')}
+  db.prepare("INSERT INTO admins(username,password,role,perms,active,created) VALUES(?,?,'staff',?,1,datetime('now'))").run(u,bcrypt.hashSync(pw,12),permsFrom(b));
+  audit(req,'staff add '+u);flash(req,'کاربر جدید اضافه شد');res.redirect(ADM+'/staff');});
+A.post('/staff/:id/toggle',(req,res)=>{const a=db.prepare('SELECT * FROM admins WHERE id=?').get(+req.params.id);
+  if(!a||a.role==='owner'||a.id===req.admin.id){flash(req,'این کاربر قابل غیرفعال‌سازی نیست');return res.redirect(ADM+'/staff')}
+  db.prepare('UPDATE admins SET active=1-active WHERE id=?').run(a.id);db.prepare("DELETE FROM sessions WHERE data LIKE ?").run('%"adminId":'+a.id+'%');audit(req,'staff toggle '+a.username);res.redirect(ADM+'/staff');});
+A.post('/staff/:id/delete',(req,res)=>{const a=db.prepare('SELECT * FROM admins WHERE id=?').get(+req.params.id);
+  if(!a||a.role==='owner'||a.id===req.admin.id){flash(req,'این کاربر قابل حذف نیست');return res.redirect(ADM+'/staff')}
+  db.prepare('DELETE FROM admins WHERE id=?').run(a.id);db.prepare("DELETE FROM sessions WHERE data LIKE ?").run('%"adminId":'+a.id+'%');audit(req,'staff delete '+a.username);flash(req,'حذف شد');res.redirect(ADM+'/staff');});
+A.get('/me',(req,res)=>res.render('admin/me'));
 A.get('/audit',(req,res)=>{const q=String(req.query.q||'').trim().slice(0,60),t=req.query.t==='fail'?'fail':req.query.t==='ok'?'ok':'';
   let w=[],a=[];if(q){w.push('(who LIKE ? OR action LIKE ? OR ip LIKE ? OR created LIKE ?)');a.push(...Array(4).fill('%'+q+'%'));}
   if(t==='fail')w.push("action LIKE '%FAIL%'");if(t==='ok')w.push("action NOT LIKE '%FAIL%'");
@@ -422,6 +465,8 @@ A.post('/sms/send',upload.none(),async(req,res)=>{const b=req.body,S=getSettings
   flash(req,fail?`ارسال: ${ok} موفق، ${fail} ناموفق (${err})`:`پیامک برای ${ok} نفر ارسال شد`);res.redirect(ADM+'/sms');});
 A.get('/payment',(req,res)=>res.render('admin/payment'));
 app.use(ADM,(req,res,next)=>{res.locals.ST={pending_payment:['در انتظار پرداخت','warn'],paid:['پرداخت‌شده','ok'],shipped:['ارسال‌شده','info'],done:['تحویل‌شده','ok'],canceled:['لغوشده','bad'],failed:['پرداخت ناموفق','bad']};res.locals.fd=d=>{try{return new Date(String(d).replace(' ','T')+'Z').toLocaleDateString('fa-IR')}catch(e){return d}};res.locals.ap=req.originalUrl.split('?')[0];res.locals.badge={orders:db.prepare("SELECT COUNT(*) c FROM orders WHERE status='pending_payment'").get().c,low:db.prepare('SELECT COUNT(*) c FROM products WHERE stock<=3 AND active=1').get().c};res.locals.admin=db.prepare('SELECT * FROM admins WHERE id=?').get(req.session.adminId||0);next();},A);
-app.use((req,res)=>res.status(404).render('404'));
-app.use((e,req,res,next)=>{console.error(e.stack||e.message);res.status(e.code==='LIMIT_FILE_SIZE'?413:500).send(e.code==='LIMIT_FILE_SIZE'?'حجم فایل زیاد است':'خطای سرور');});
+app.use((req,res)=>errPage(res,404));
+app.use((e,req,res,next)=>{console.error(e.stack||e.message);if(res.headersSent)return next(e);
+  const c=e.code==='LIMIT_FILE_SIZE'?413:(e.type==='entity.too.large'?413:(e.type==='entity.parse.failed'||e instanceof URIError?400:(e.code&&String(e.code).startsWith('LIMIT_')?400:500)));errPage(res,c);});
+process.on('unhandledRejection',e=>console.error('unhandledRejection',e&&e.stack||e));process.on('uncaughtException',e=>console.error('uncaughtException',e&&e.stack||e));
 app.listen(PORT,()=>console.log('VELORA on '+SITE));

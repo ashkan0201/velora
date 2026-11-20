@@ -1,0 +1,4 @@
+<%- include('_h',{t:'حساب من',sub:'تغییر نام کاربری و رمز عبور'}) %>
+<form method="post" action="<%= ADM %>/account?_csrf=<%= csrf %>" enctype="multipart/form-data" class="card" style="max-width:480px"><input type="hidden" name="back" value="me"><h3><%- ic('lock') %> حساب من</h3>
+<label>نام کاربری</label><input name="username" dir="ltr" value="<%= admin.username %>"><label>رمز فعلی <span class="req">*</span></label><input name="current" type="password" required dir="ltr" autocomplete="current-password"><label>رمز جدید (خالی = بدون تغییر)</label><input name="password" type="password" dir="ltr" minlength="8" autocomplete="new-password"><br><button class="btn">ذخیره</button></form>
+<%- include('_f') %>
